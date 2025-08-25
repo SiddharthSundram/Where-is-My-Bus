@@ -1,0 +1,271 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// User model with authentication and role-based access
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String?
+  phone        String?
+  passwordHash String?
+  role         UserRole @default(USER)
+  preferences  Json?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // Relations
+  bookings     Booking[]
+  notifications Notification[]
+  
+  @@map("users")
+}
+
+enum UserRole {
+  USER
+  ADMIN
+}
+
+// Bus model with GPS tracking capabilities
+model Bus {
+  id              String      @id @default(cuid())
+  busNumber       String      @unique
+  operator        String
+  type            BusType
+  capacity        Int
+  registrationNo  String      @unique
+  gpsDeviceId     String      @unique
+  currentLocation Json?
+  status          BusStatus   @default(ACTIVE)
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  // Relations
+  schedules       Schedule[]
+  telemetry       Telemetry[]
+  bookings       Booking[]
+  
+  @@map("buses")
+}
+
+enum BusType {
+  AC
+  NON_AC
+}
+
+enum BusStatus {
+  ACTIVE
+  INACTIVE
+  MAINTENANCE
+}
+
+// Route model with geographic information
+model Route {
+  id          String   @id @default(cuid())
+  city        String
+  name        String
+  distanceKm  Float
+  polyline    String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  stops       Stop[]
+  schedules   Schedule[]
+  bookings    Booking[]
+  
+  @@map("routes")
+}
+
+// Stop model with location data
+model Stop {
+  id        String   @id @default(cuid())
+  routeId   String
+  name      String
+  index     Int
+  location  Json     // { type: "Point", coordinates: [lng, lat] }
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  route     Route    @relation(fields: [routeId], references: [id], onDelete: Cascade)
+  fromBookings Booking[] @relation("FromStopBookings")
+  toBookings   Booking[] @relation("ToStopBookings")
+  
+  @@map("stops")
+  @@index([routeId])
+  @@index([index])
+}
+
+// Schedule model for bus timetables
+model Schedule {
+  id             String    @id @default(cuid())
+  busId          String
+  routeId        String
+  departureTime  DateTime
+  arrivalTime    DateTime
+  daysActive     Int       // Bitmask for days of week
+  frequencyMin   Int?
+  baseEtaProfile Json?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  // Relations
+  bus            Bus       @relation(fields: [busId], references: [id], onDelete: Cascade)
+  route          Route     @relation(fields: [routeId], references: [id], onDelete: Cascade)
+  
+  @@map("schedules")
+  @@index([busId])
+  @@index([routeId])
+}
+
+// Telemetry model for real-time GPS data
+model Telemetry {
+  id           String   @id @default(cuid())
+  busId        String
+  timestamp    DateTime
+  location     Json     // { type: "Point", coordinates: [lng, lat] }
+  speed        Float?
+  heading      Float?
+  trafficLevel Int?     // 1-5 scale
+  delayMin     Int?
+  createdAt    DateTime @default(now())
+
+  // Relations
+  bus          Bus      @relation(fields: [busId], references: [id], onDelete: Cascade)
+  
+  @@map("telemetry")
+  @@index([busId])
+  @@index([timestamp])
+}
+
+// Booking model for ticket management
+model Booking {
+  id            String        @id @default(cuid())
+  userId        String
+  busId         String
+  routeId       String
+  fromStopId    String
+  toStopId      String
+  seatType      BusType
+  seatCount     Int
+  fare          Float
+  status        BookingStatus @default(PENDING)
+  holdExpiresAt DateTime?
+  paymentId     String?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  // Relations
+  user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bus           Bus           @relation(fields: [busId], references: [id], onDelete: Cascade)
+  route         Route         @relation(fields: [routeId], references: [id], onDelete: Cascade)
+  fromStop      Stop          @relation("FromStopBookings", fields: [fromStopId], references: [id], onDelete: Cascade)
+  toStop        Stop          @relation("ToStopBookings", fields: [toStopId], references: [id], onDelete: Cascade)
+  payments      Payment[]
+  
+  @@map("bookings")
+  @@index([userId])
+  @@index([busId])
+  @@index([status])
+}
+
+enum BookingStatus {
+  PENDING
+  PAID
+  CANCELLED
+  REFUNDED
+}
+
+// Payment model for transaction tracking
+model Payment {
+  id          String       @id @default(cuid())
+  bookingId   String       @unique
+  provider    String       @default("razorpay")
+  orderId     String?
+  paymentId   String?
+  signature   String?
+  amount      Float
+  currency    String       @default("INR")
+  status      String       @default("created")
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  // Relations
+  booking     Booking      @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  
+  @@map("payments")
+  @@index([bookingId])
+  @@index([orderId])
+  @@index([paymentId])
+}
+
+// Notification model for user alerts
+model Notification {
+  id        String           @id @default(cuid())
+  userId    String
+  type      NotificationType
+  title     String
+  body      String
+  read      Boolean          @default(false)
+  metadata  Json?
+  createdAt DateTime         @default(now())
+
+  // Relations
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@map("notifications")
+  @@index([userId])
+  @@index([read])
+}
+
+enum NotificationType {
+  BOOKING_CONFIRMATION
+  PAYMENT_SUCCESS
+  PAYMENT_FAILURE
+  ETA_UPDATE
+  DELAY_ALERT
+  ROUTE_CHANGE
+  ADMIN_MESSAGE
+}
+
+// AI Model tracking for machine learning models
+model AiModel {
+  id            String   @id @default(cuid())
+  modelName     String
+  version       String
+  metrics       Json?
+  artifactPath  String?
+  featureSchema Json?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@map("ai_models")
+  @@index([modelName])
+  @@index([version])
+}
+
+// Analytics cache for report data
+model AnalyticsCache {
+  id           String   @id @default(cuid())
+  reportType   String
+  paramsHash   String
+  computedAt   DateTime @default(now())
+  payload      Json
+  createdAt    DateTime @default(now())
+
+  @@map("analytics_cache")
+  @@index([reportType])
+  @@index([computedAt])
+}
