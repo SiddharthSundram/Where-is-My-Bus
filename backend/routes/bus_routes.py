@@ -14,47 +14,58 @@ def auth_required(admin_only=False):
             token = request.headers.get("Authorization")
             if not token:
                 return jsonify({"error": "Missing token"}), 401
-            
-            # Remove "Bearer " prefix if present
+
+            # ✅ Remove Bearer prefix if present
             if token.startswith("Bearer "):
                 token = token.split(" ")[1]
-            
+
             decoded = verify_token(token)
             if not decoded:
                 return jsonify({"error": "Invalid or expired token"}), 401
 
-            # ✅ Role check
+            # ✅ Check admin role for restricted endpoints
             if admin_only and decoded.get("role") != "ADMIN":
                 return jsonify({"error": "Admin access required"}), 403
 
-            # Store decoded payload for downstream use
             request.user = decoded
             return f(*args, **kwargs)
         return wrapper
     return decorator
 
 
-# ✅ Add a new bus (ADMIN only)
+# ✅ Add a new bus with route + stops — ADMIN ONLY
 @bus_bp.route("/", methods=["POST"])
 @auth_required(admin_only=True)
 def create_bus():
     try:
         data = request.get_json()
-        required_fields = ["busNumber", "operator", "type", "capacity", "registrationNo", "gpsDeviceId"]
+        required_fields = [
+            "busCategory",
+            "busNumber",
+            "type",
+            "capacity",
+            "registrationNo",
+            "gpsDeviceId"
+        ]
 
-        # Validate required fields
+        # ✅ Validate required fields
         missing = [f for f in required_fields if f not in data]
         if missing:
             return jsonify({"error": f"Missing fields: {', '.join(missing)}"}), 400
 
+        # ✅ Route object with stops inside
+        route = data.get("route", {})
+
         bus = BusModel.create_bus(
+            bus_category=data["busCategory"],
             bus_number=data["busNumber"],
-            operator=data["operator"],
             bus_type=data["type"],
             capacity=data["capacity"],
             registration_no=data["registrationNo"],
             gps_device_id=data["gpsDeviceId"],
-            current_location=data.get("currentLocation", {})
+            current_location=data.get("currentLocation", {}),
+            status=data.get("status", "ACTIVE"),
+            route=route
         )
 
         return jsonify({
@@ -66,7 +77,7 @@ def create_bus():
         return jsonify({"error": str(e)}), 500
 
 
-# ✅ Get all buses (USER + ADMIN)
+# ✅ Get all buses with routes + stops (USER + ADMIN)
 @bus_bp.route("/", methods=["GET"])
 @auth_required()
 def get_all_buses():
@@ -77,7 +88,7 @@ def get_all_buses():
         return jsonify({"error": str(e)}), 500
 
 
-# ✅ Get bus by ID (USER + ADMIN)
+# ✅ Get single bus with routes + stops (USER + ADMIN)
 @bus_bp.route("/<bus_id>", methods=["GET"])
 @auth_required()
 def get_bus(bus_id):
@@ -90,7 +101,7 @@ def get_bus(bus_id):
         return jsonify({"error": str(e)}), 500
 
 
-# ✅ Update bus details (ADMIN only)
+# ✅ Update bus or nested route/stops — ADMIN ONLY
 @bus_bp.route("/<bus_id>", methods=["PUT"])
 @auth_required(admin_only=True)
 def update_bus(bus_id):
@@ -104,7 +115,7 @@ def update_bus(bus_id):
         return jsonify({"error": str(e)}), 500
 
 
-# ✅ Delete a bus (ADMIN only)
+# ✅ Delete a bus completely — ADMIN ONLY
 @bus_bp.route("/<bus_id>", methods=["DELETE"])
 @auth_required(admin_only=True)
 def delete_bus(bus_id):

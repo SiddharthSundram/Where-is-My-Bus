@@ -4,37 +4,60 @@ from db import db
 from bson import ObjectId
 
 class BusModel:
+    collection = db.buses_data  # ✅ Single collection for buses + routes + stops
+
     @staticmethod
     def serialize_bus(bus):
         """Convert MongoDB ObjectId to string for JSON response"""
         if not bus:
             return None
-        bus["_id"] = str(bus["_id"]) if "_id" in bus else None
+        if "_id" in bus:
+            bus["_id"] = str(bus["_id"])
         return bus
 
     @staticmethod
-    def create_bus(bus_number, operator, bus_type, capacity, registration_no, gps_device_id, current_location=None, status="ACTIVE"):
-        """Create a new bus record"""
+    def create_bus(
+        bus_category,
+        bus_number,
+        bus_type,
+        capacity,
+        registration_no,
+        gps_device_id,
+        current_location=None,
+        status="ACTIVE",
+        route=None
+    ):
+        """
+        Create a new bus with nested routes + stops inside a single 'bus' object.
+        """
         try:
             bus_data = {
-                "id": str(uuid.uuid4()),
-                "busNumber": bus_number,
-                "operator": operator,
-                "type": bus_type,
-                "capacity": int(capacity),
-                "registrationNo": registration_no,
-                "gpsDeviceId": gps_device_id,
-                "currentLocation": current_location if current_location else {},
-                "status": status,
-                "createdAt": datetime.utcnow(),
-                "updatedAt": datetime.utcnow()
+                "bus": {
+                    "_id": str(ObjectId()),  # ✅ Mongo ObjectId as string
+                    "id": str(uuid.uuid4()),
+
+                    # Bus Info
+                    "busCategory": bus_category,  # ✅ State or Private
+                    "busNumber": bus_number,      # ✅ Bus name like 1A , 215A
+                    "type": bus_type,              # ✅ ac or non-ac
+                    "capacity": int(capacity),
+                    "registrationNo": registration_no,
+                    "gpsDeviceId": gps_device_id,           
+
+                    # Location & Status
+                    "currentLocation": current_location if current_location else {},
+                    "status": status,
+
+                    # Timestamps
+                    "createdAt": datetime.utcnow(),
+                    "updatedAt": datetime.utcnow(),
+
+                    # Routes + Stops
+                    "route": route if route else {}
+                }
             }
 
-            # ✅ Ensure it's always a dict, not a list
-            if isinstance(bus_data, list):
-                raise ValueError("Invalid data format: expected an object, got a list.")
-
-            db.buses.insert_one(bus_data)
+            BusModel.collection.insert_one(bus_data)
             return BusModel.serialize_bus(bus_data)
 
         except Exception as e:
@@ -42,32 +65,34 @@ class BusModel:
 
     @staticmethod
     def get_all_buses():
-        """Fetch all buses"""
+        """Fetch all buses with routes and stops"""
         try:
-            buses = list(db.buses.find({}))
+            buses = list(BusModel.collection.find({}))
             return [BusModel.serialize_bus(bus) for bus in buses]
         except Exception as e:
             raise Exception(f"Error fetching buses: {str(e)}")
 
     @staticmethod
     def get_bus_by_id(bus_id):
-        """Fetch single bus"""
+        """Fetch a single bus by its unique ID"""
         try:
-            bus = db.buses.find_one({"id": bus_id})
+            bus = BusModel.collection.find_one({"bus.id": bus_id})
             return BusModel.serialize_bus(bus)
         except Exception as e:
             raise Exception(f"Error fetching bus: {str(e)}")
 
     @staticmethod
     def update_bus(bus_id, update_data):
-        """Update bus details"""
+        """Update bus details, route, or stops"""
         try:
-            # ✅ Ensure we don't accidentally send a list
             if isinstance(update_data, list):
                 raise ValueError("Invalid update format: expected an object, got a list.")
 
-            update_data["updatedAt"] = datetime.utcnow()
-            result = db.buses.update_one({"id": bus_id}, {"$set": update_data})
+            update_data["bus.updatedAt"] = datetime.utcnow()
+            result = BusModel.collection.update_one(
+                {"bus.id": bus_id},
+                {"$set": {f"bus.{k}": v for k, v in update_data.items()}}
+            )
             return result.modified_count > 0
         except Exception as e:
             raise Exception(f"Error updating bus: {str(e)}")
@@ -76,7 +101,7 @@ class BusModel:
     def delete_bus(bus_id):
         """Delete a bus"""
         try:
-            result = db.buses.delete_one({"id": bus_id})
+            result = BusModel.collection.delete_one({"bus.id": bus_id})
             return result.deleted_count > 0
         except Exception as e:
             raise Exception(f"Error deleting bus: {str(e)}")
