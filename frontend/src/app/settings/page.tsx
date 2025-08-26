@@ -1,13 +1,12 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Separator } from "@/components/ui/separator";
 import { 
   FaBell, 
   FaMoon, 
@@ -49,72 +48,101 @@ interface UserSettings {
 }
 
 export default function SettingsPage() {
-  const [settings, setSettings] = useState<UserSettings>({
-    theme: "dark",
-    notifications: {
-      email: true,
-      push: true,
-      sms: false,
-      bookingReminders: true,
-      delayAlerts: true,
-      promotional: false
-    },
-    privacy: {
-      profileVisibility: "private",
-      showEmail: false,
-      showPhone: false,
-      dataCollection: true
-    },
-    security: {
-      twoFactorAuth: false,
-      loginAlerts: true,
-      sessionTimeout: 30
-    },
-    language: "en",
-    timezone: "Asia/Kolkata"
-  });
-
-  const [loading, setLoading] = useState(false);
+  const [settings, setSettings] = useState<UserSettings | null>(null);
+  const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("general");
+  
+  // --- Start of new authentication logic ---
+  const router = useRouter();
+  const [isMounted, setIsMounted] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+
+  useEffect(() => {
+    setIsMounted(true);
+    const token = localStorage.getItem("token");
+    if (token) {
+      setIsAuthenticated(true);
+    } else {
+      setLoading(false); // Stop loading if not authenticated
+    }
+  }, []);
+  // --- End of new authentication logic ---
+
+  // Fetch settings data
+  useEffect(() => {
+    if (isAuthenticated && isMounted) {
+      // Simulate fetching settings data
+      setTimeout(() => {
+        setSettings({
+          theme: "dark",
+          notifications: {
+            email: true,
+            push: true,
+            sms: false,
+            bookingReminders: true,
+            delayAlerts: true,
+            promotional: false
+          },
+          privacy: {
+            profileVisibility: "private",
+            showEmail: false,
+            showPhone: false,
+            dataCollection: true
+          },
+          security: {
+            twoFactorAuth: false,
+            loginAlerts: true,
+            sessionTimeout: 30
+          },
+          language: "en",
+          timezone: "Asia/Kolkata"
+        });
+        setLoading(false);
+      }, 1000);
+    }
+  }, [isAuthenticated, isMounted]);
+
 
   const handleSave = async () => {
     setLoading(true);
     // Simulate API call
     setTimeout(() => {
       setLoading(false);
-      // Show success message
+      alert("Settings saved successfully!");
     }, 1000);
   };
 
   const handleReset = () => {
-    setSettings({
-      theme: "dark",
-      notifications: {
-        email: true,
-        push: true,
-        sms: false,
-        bookingReminders: true,
-        delayAlerts: true,
-        promotional: false
-      },
-      privacy: {
-        profileVisibility: "private",
-        showEmail: false,
-        showPhone: false,
-        dataCollection: true
-      },
-      security: {
-        twoFactorAuth: false,
-        loginAlerts: true,
-        sessionTimeout: 30
-      },
-      language: "en",
-      timezone: "Asia/Kolkata"
-    });
+    if (confirm("Are you sure you want to reset all settings to their default values?")) {
+        setSettings({
+            theme: "dark",
+            notifications: {
+              email: true,
+              push: true,
+              sms: false,
+              bookingReminders: true,
+              delayAlerts: true,
+              promotional: false
+            },
+            privacy: {
+              profileVisibility: "private",
+              showEmail: false,
+              showPhone: false,
+              dataCollection: true
+            },
+            security: {
+              twoFactorAuth: false,
+              loginAlerts: true,
+              sessionTimeout: 30
+            },
+            language: "en",
+            timezone: "Asia/Kolkata"
+          });
+          alert("Settings have been reset to default.");
+    }
   };
 
   const exportData = () => {
-    // Simulate data export
     const data = {
       settings,
       exportDate: new Date().toISOString(),
@@ -134,10 +162,52 @@ export default function SettingsPage() {
 
   const deleteAccount = () => {
     if (confirm("Are you sure you want to delete your account? This action cannot be undone.")) {
-      // Simulate account deletion
       console.log("Account deletion requested");
+      alert("Account deletion request submitted.");
     }
   };
+
+  // --- Start of new rendering logic ---
+  if (!isMounted || loading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-primary"></div>
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return (
+      <div className="flex items-center justify-center min-h-screen relative overflow-hidden">
+        <Card className="w-96 animate-scale-in bg-gradient-to-br from-background/80 to-background/60 backdrop-blur-sm border-primary/20 shadow-2xl relative z-10">
+          <CardContent className="pt-6 text-center">
+            <div className="relative inline-block mb-4">
+              <FaUser className="w-16 h-16 mx-auto text-muted-foreground" />
+              <div className="absolute inset-0 bg-gradient-to-r from-blue-500/20 to-purple-500/20 rounded-full blur-xl animate-pulse"></div>
+            </div>
+            <h3 className="text-lg font-semibold mb-2 bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
+              Authentication Required
+            </h3>
+            <p className="text-muted-foreground mb-4">Please sign in to manage your settings</p>
+            <Button onClick={() => router.push("/login")} className="bg-gradient-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600 transform hover:scale-105 transition-all duration-300">
+              Sign In
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+  // --- End of new rendering logic ---
+
+  if (!settings) {
+    // This can happen briefly after authentication before settings are loaded
+    return (
+        <div className="flex items-center justify-center min-h-screen">
+            <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-primary"></div>
+        </div>
+    );
+  }
+
 
   return (
     <div className="container mx-auto px-4 py-8 relative min-h-screen">
@@ -213,7 +283,7 @@ export default function SettingsPage() {
                         id="language"
                         value={settings.language}
                         onChange={(e) => setSettings({...settings, language: e.target.value})}
-                        className="w-full px-3 py-2 border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-ring"
+                        className="w-full px-3 py-2 border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-ring bg-background"
                       >
                         <option value="en">English</option>
                         <option value="hi">हिन्दी (Hindi)</option>
@@ -230,7 +300,7 @@ export default function SettingsPage() {
                         id="timezone"
                         value={settings.timezone}
                         onChange={(e) => setSettings({...settings, timezone: e.target.value})}
-                        className="w-full px-3 py-2 border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-ring"
+                        className="w-full px-3 py-2 border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-ring bg-background"
                       >
                         <option value="Asia/Kolkata">India Standard Time (IST)</option>
                         <option value="Asia/Dubai">Gulf Standard Time (GST)</option>

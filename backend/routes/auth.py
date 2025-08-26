@@ -4,10 +4,11 @@ from datetime import datetime
 from utils.jwt_utils import generate_token, verify_token
 from utils.json_encoder import serialize_doc
 from db import db
+from bson import ObjectId
 
 auth_bp = Blueprint("auth", __name__)
 
-# ✅ Register route
+# ✅ Register route (works for USER and ADMIN directly)
 @auth_bp.route("/register", methods=["POST"])
 def register():
     try:
@@ -16,6 +17,7 @@ def register():
         email = data.get("email")
         phone = data.get("phone")
         password = data.get("password")
+        role = data.get("role", "USER").upper()  # ✅ Allow USER or ADMIN
 
         # Validate inputs
         if not name or not email or not phone or not password:
@@ -31,7 +33,7 @@ def register():
             "email": email,
             "phone": phone,
             "passwordHash": generate_password_hash(password),
-            "role": "USER",
+            "role": role if role in ["USER", "ADMIN"] else "USER",  # ✅ Force valid role
             "createdAt": datetime.utcnow(),
             "updatedAt": datetime.utcnow()
         }
@@ -65,23 +67,14 @@ def login():
         email = data.get("email")
         password = data.get("password")
 
-        # Validate inputs
         if not email or not password:
             return jsonify({"error": "Email and password are required"}), 400
 
-        # Find user by email
         user = db.users.find_one({"email": email})
-        if not user:
+        if not user or not check_password_hash(user["passwordHash"], password):
             return jsonify({"error": "Invalid email or password"}), 401
 
-        # Verify password
-        if not check_password_hash(user["passwordHash"], password):
-            return jsonify({"error": "Invalid email or password"}), 401
-
-        # Generate JWT token
-        token = generate_token(str(user["_id"]))
-
-        # Convert user data safely
+        token = generate_token(str(user["_id"]), user.get("role", "USER"))
         user = serialize_doc(user)
 
         return jsonify({
@@ -106,18 +99,15 @@ def login():
 @auth_bp.route("/profile", methods=["GET"])
 def profile():
     try:
-        # Get JWT from headers
         token = request.headers.get("Authorization")
         if not token:
             return jsonify({"error": "Missing token"}), 401
 
-        # Verify token
         decoded = verify_token(token)
         if not decoded:
             return jsonify({"error": "Invalid or expired token"}), 401
 
-        # Fetch user from DB
-        user = db.users.find_one({"_id": db.ObjectId(decoded["user_id"])}, {"passwordHash": 0})
+        user = db.users.find_one({"_id": ObjectId(decoded["user_id"])}, {"passwordHash": 0})
         if not user:
             return jsonify({"error": "User not found"}), 404
 

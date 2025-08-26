@@ -22,7 +22,8 @@ import {
   FaMoneyBill,
   FaArrowRight,
   FaWifi,
-  FaExclamationTriangle
+  FaExclamationTriangle,
+  FaUser
 } from "react-icons/fa";
 import { format } from "date-fns";
 
@@ -91,6 +92,21 @@ export default function JourneyTrackerPage() {
   const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
+  // --- Start of authentication logic ---
+  const [isMounted, setIsMounted] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+
+  useEffect(() => {
+    setIsMounted(true);
+    const token = localStorage.getItem("token");
+    if (token) {
+      setIsAuthenticated(true);
+    } else {
+      setLoading(false); // If not authenticated, stop loading
+    }
+  }, []);
+  // --- End of authentication logic ---
+
   useEffect(() => {
     // Mouse tracking for 3D effects
     const handleMouseMove = (e: MouseEvent) => {
@@ -111,7 +127,6 @@ export default function JourneyTrackerPage() {
         resizeCanvas();
         window.addEventListener('resize', resizeCanvas);
         
-        // Particle system
         const particles = Array.from({ length: 40 }, () => ({
           x: Math.random() * canvas.width,
           y: Math.random() * canvas.height,
@@ -123,9 +138,10 @@ export default function JourneyTrackerPage() {
         }));
 
         const animate = () => {
+          if (!ctx) return;
           ctx.clearRect(0, 0, canvas.width, canvas.height);
           
-          particles.forEach((particle, i) => {
+          particles.forEach((particle) => {
             particle.x += particle.vx;
             particle.y += particle.vy;
             
@@ -152,57 +168,57 @@ export default function JourneyTrackerPage() {
 
   // Mock data - replace with actual API calls
   useEffect(() => {
-    const mockJourneyData: JourneyData = {
-      bus: {
-        id: busId,
-        busNumber: "MH-01-AB-1234",
-        operator: "MSRTC",
-        type: "AC",
-        capacity: 45,
-        currentLocation: { lat: 19.0760, lng: 72.8777 }, // Mumbai
-        speed: 45,
-        status: "ACTIVE"
-      },
-      route: {
-        id: "route1",
-        name: `${fromStop} to ${toStop}`,
-        distanceKm: 150,
-        fromCity: fromStop,
-        toCity: toStop
-      },
-      stops: [
-        { id: "1", name: fromStop, location: { lat: 19.0760, lng: 72.8777 }, isCurrent: true, isBoarding: true },
-        { id: "2", name: "Dadar", location: { lat: 19.0176, lng: 72.8562 }, eta: 15 },
-        { id: "3", name: "Thane", location: { lat: 19.2183, lng: 72.9781 }, eta: 35 },
-        { id: "4", name: "Lonavala", location: { lat: 18.7500, lng: 73.4000 }, eta: 90 },
-        { id: "5", name: toStop, location: { lat: 18.5204, lng: 73.8567 }, eta: 150, isDestination: true }
-      ],
-      schedule: {
-        departureTime: "2024-01-15T14:30:00",
-        arrivalTime: "2024-01-15T18:45:00",
-        estimatedArrival: "2024-01-15T19:15:00"
-      },
-      occupancy: {
-        booked: 38,
-        available: 7
-      }
-    };
+    if(isAuthenticated && isMounted) {
+        const mockJourneyData: JourneyData = {
+          bus: {
+            id: busId,
+            busNumber: "MH-01-AB-1234",
+            operator: "MSRTC",
+            type: "AC",
+            capacity: 45,
+            currentLocation: { lat: 19.0760, lng: 72.8777 }, // Mumbai
+            speed: 45,
+            status: "ACTIVE"
+          },
+          route: {
+            id: "route1",
+            name: `${fromStop} to ${toStop}`,
+            distanceKm: 150,
+            fromCity: fromStop,
+            toCity: toStop
+          },
+          stops: [
+            { id: "1", name: fromStop, location: { lat: 19.0760, lng: 72.8777 }, isCurrent: true, isBoarding: true },
+            { id: "2", name: "Dadar", location: { lat: 19.0176, lng: 72.8562 }, eta: 15 },
+            { id: "3", name: "Thane", location: { lat: 19.2183, lng: 72.9781 }, eta: 35 },
+            { id: "4", name: "Lonavala", location: { lat: 18.7500, lng: 73.4000 }, eta: 90 },
+            { id: "5", name: toStop, location: { lat: 18.5204, lng: 73.8567 }, eta: 150, isDestination: true }
+          ],
+          schedule: {
+            departureTime: "2024-01-15T14:30:00",
+            arrivalTime: "2024-01-15T18:45:00",
+            estimatedArrival: "2024-01-15T19:15:00"
+          },
+          occupancy: {
+            booked: 38,
+            available: 7
+          }
+        };
 
-    setTimeout(() => {
-      setJourneyData(mockJourneyData);
-      setLiveEta(150); // Initial ETA in minutes
-      setLoading(false);
-    }, 1500);
+        setTimeout(() => {
+          setJourneyData(mockJourneyData);
+          setLiveEta(150); // Initial ETA in minutes
+          setLoading(false);
+        }, 1500);
 
-    // Simulate real-time updates
-    const interval = setInterval(() => {
-      if (liveEta > 0) {
-        setLiveEta(prev => Math.max(0, prev - 1));
-      }
-    }, 60000); // Update every minute
+        // Simulate real-time updates
+        const interval = setInterval(() => {
+          setLiveEta(prev => Math.max(0, prev - 1));
+        }, 60000); // Update every minute
 
-    return () => clearInterval(interval);
-  }, [busId, fromStop, toStop]);
+        return () => clearInterval(interval);
+    }
+  }, [busId, fromStop, toStop, isAuthenticated, isMounted]);
 
   const calculateFare = () => {
     if (!journeyData) return 0;
@@ -222,69 +238,32 @@ export default function JourneyTrackerPage() {
     router.push("/tickets");
   };
 
-  if (loading) {
+  if (!isMounted || loading) {
     return (
-      <div className="container mx-auto px-4 py-8 relative overflow-hidden">
-        {/* 3D Canvas Background */}
-        <canvas 
-          ref={canvasRef}
-          className="absolute inset-0 w-full h-full pointer-events-none"
-          style={{ zIndex: -1 }}
-        />
-        
-        <div className="mb-8 animate-fade-in">
-          <Skeleton className="h-10 w-64 mb-2" />
-          <Skeleton className="h-6 w-96" />
-        </div>
-        
-        <div className="grid gap-6 lg:grid-cols-3">
-          <div className="lg:col-span-2">
-            <Card className="bg-gradient-to-br from-background/80 to-background/60 backdrop-blur-sm border-primary/20">
-              <CardHeader>
-                <Skeleton className="h-6 w-1/3" />
-              </CardHeader>
-              <CardContent>
-                <div className="h-96 bg-gradient-to-br from-blue-50/10 to-green-50/10 dark:from-blue-950/20 dark:to-green-950/20 rounded-lg border flex items-center justify-center">
-                  <div className="text-center">
-                    <Skeleton className="h-12 w-12 rounded-full mx-auto mb-4" />
-                    <Skeleton className="h-4 w-32 mx-auto" />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-          
-          <div className="space-y-6">
-            <Card className="bg-gradient-to-br from-background/80 to-background/60 backdrop-blur-sm border-primary/20">
-              <CardHeader>
-                <Skeleton className="h-6 w-1/2" />
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  {[...Array(5)].map((_, i) => (
-                    <div key={i} className="flex items-center space-x-3">
-                      <Skeleton className="h-4 w-4" />
-                      <Skeleton className="h-4 w-3/4" />
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-            
-            <Card className="bg-gradient-to-br from-background/80 to-background/60 backdrop-blur-sm border-primary/20">
-              <CardHeader>
-                <Skeleton className="h-6 w-1/2" />
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-3">
-                  <Skeleton className="h-4 w-full" />
-                  <Skeleton className="h-4 w-full" />
-                  <Skeleton className="h-10 w-full" />
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-        </div>
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-primary"></div>
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return (
+      <div className="flex items-center justify-center min-h-screen relative overflow-hidden">
+        <Card className="w-96 animate-scale-in bg-gradient-to-br from-background/80 to-background/60 backdrop-blur-sm border-primary/20 shadow-2xl relative z-10">
+          <CardContent className="pt-6 text-center">
+            <div className="relative inline-block mb-4">
+              <FaUser className="w-16 h-16 mx-auto text-muted-foreground" />
+              <div className="absolute inset-0 bg-gradient-to-r from-blue-500/20 to-purple-500/20 rounded-full blur-xl animate-pulse"></div>
+            </div>
+            <h3 className="text-lg font-semibold mb-2 bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
+              Authentication Required
+            </h3>
+            <p className="text-muted-foreground mb-4">Please sign in to view journey details</p>
+            <Button onClick={() => router.push("/login")} className="bg-gradient-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600 transform hover:scale-105 transition-all duration-300">
+              Sign In
+            </Button>
+          </CardContent>
+        </Card>
       </div>
     );
   }
@@ -292,7 +271,6 @@ export default function JourneyTrackerPage() {
   if (!journeyData) {
     return (
       <div className="container mx-auto px-4 py-8 relative overflow-hidden">
-        {/* 3D Canvas Background */}
         <canvas 
           ref={canvasRef}
           className="absolute inset-0 w-full h-full pointer-events-none"
@@ -323,14 +301,12 @@ export default function JourneyTrackerPage() {
 
   return (
     <div className="container mx-auto px-4 py-8 relative overflow-hidden">
-      {/* 3D Canvas Background */}
       <canvas 
         ref={canvasRef}
         className="absolute inset-0 w-full h-full pointer-events-none"
         style={{ zIndex: -1 }}
       />
 
-      {/* Floating Elements */}
       <div className="absolute inset-0 pointer-events-none">
         {[...Array(5)].map((_, i) => (
           <div
@@ -388,22 +364,16 @@ export default function JourneyTrackerPage() {
               </CardHeader>
               <CardContent>
                 <div className="h-96 bg-gradient-to-br from-blue-50/10 via-purple-50/10 to-pink-50/10 dark:from-blue-950/20 dark:via-purple-950/20 dark:to-pink-950/20 rounded-lg border relative overflow-hidden">
-                  {/* Enhanced 3D map representation */}
                   <div className="absolute inset-0 flex items-center justify-center">
                     <div className="text-center">
                       <div className="relative mb-8">
-                        {/* Animated route line */}
                         <div className="w-80 h-2 bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500 mx-auto rounded-full animate-pulse"></div>
-                        
-                        {/* Animated bus marker */}
                         <div className="absolute top-0 left-1/2 transform -translate-x-1/2 -translate-y-1/2">
                           <div className="relative animate-bounce">
                             <FaBus className="text-4xl text-blue-500 drop-shadow-lg" />
                             <div className="absolute -top-2 -right-2 w-4 h-4 bg-green-500 rounded-full animate-pulse shadow-lg"></div>
                           </div>
                         </div>
-                        
-                        {/* Stop markers */}
                         <div className="absolute top-0 left-0 transform -translate-x-1/2 -translate-y-1/2">
                           <div className="w-6 h-6 bg-gradient-to-r from-blue-500 to-purple-500 rounded-full border-2 border-white shadow-lg"></div>
                         </div>
@@ -411,7 +381,6 @@ export default function JourneyTrackerPage() {
                           <div className="w-6 h-6 bg-gradient-to-r from-purple-500 to-pink-500 rounded-full border-2 border-white shadow-lg"></div>
                         </div>
                       </div>
-                      
                       <div className="mt-16 space-y-3">
                         <p className="text-2xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
                           {bus.busNumber}
@@ -460,7 +429,6 @@ export default function JourneyTrackerPage() {
                           <div className="w-0.5 h-10 bg-gradient-to-b from-blue-300 to-purple-300 mt-2"></div>
                         )}
                       </div>
-                      
                       <div className="flex-1">
                         <div className="flex justify-between items-center">
                           <div>
@@ -479,7 +447,6 @@ export default function JourneyTrackerPage() {
                               </p>
                             )}
                           </div>
-                          
                           {stop.eta && (
                             <div className="text-right">
                               <p className="text-sm font-medium bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
@@ -498,7 +465,6 @@ export default function JourneyTrackerPage() {
 
           {/* Sidebar */}
           <div className="space-y-6">
-            {/* Bus Info */}
             <Card className="bg-gradient-to-br from-background/80 to-background/60 backdrop-blur-sm border-primary/20 animate-scale-in" style={{ animationDelay: '0.2s' }}>
               <CardHeader>
                 <CardTitle className="flex items-center text-xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
@@ -535,7 +501,6 @@ export default function JourneyTrackerPage() {
               </CardContent>
             </Card>
 
-            {/* Journey Info */}
             <Card className="bg-gradient-to-br from-background/80 to-background/60 backdrop-blur-sm border-primary/20 animate-scale-in" style={{ animationDelay: '0.3s' }}>
               <CardHeader>
                 <CardTitle className="flex items-center text-xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
@@ -569,7 +534,6 @@ export default function JourneyTrackerPage() {
               </CardContent>
             </Card>
 
-            {/* Occupancy */}
             <Card className="bg-gradient-to-br from-background/80 to-background/60 backdrop-blur-sm border-primary/20 animate-scale-in" style={{ animationDelay: '0.4s' }}>
               <CardHeader>
                 <CardTitle className="flex items-center text-xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
@@ -593,7 +557,6 @@ export default function JourneyTrackerPage() {
               </CardContent>
             </Card>
 
-            {/* Booking Panel */}
             <Card className="bg-gradient-to-br from-background/80 to-background/60 backdrop-blur-sm border-primary/20 animate-scale-in" style={{ animationDelay: '0.5s' }}>
               <CardHeader>
                 <CardTitle className="flex items-center text-xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">

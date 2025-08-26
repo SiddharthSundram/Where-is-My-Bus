@@ -1,7 +1,14 @@
 "use client";
 
-import React, { createContext, useContext, useState, useEffect, ReactNode } from "react";
+import React, {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  ReactNode,
+} from "react";
 import { useRouter } from "next/navigation";
+import Cookies from "js-cookie";
 
 interface User {
   id: string;
@@ -43,6 +50,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // ✅ Login function
   const login = (token: string, userData?: User) => {
     localStorage.setItem("token", token);
+    Cookies.set("auth-token", token, { expires: 1 }); // Set a cookie that expires in 1 day
 
     if (userData) {
       localStorage.setItem("user", JSON.stringify(userData));
@@ -62,16 +70,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = () => {
     localStorage.removeItem("token");
     localStorage.removeItem("user");
+    Cookies.remove("auth-token"); // Remove the cookie on logout
     setIsAuthenticated(false);
     setUser(null);
     setIsAdmin(false);
 
-    // 🔄 Redirect to login page after logout 
+    // 🔄 Redirect to login page after logout
     router.push("/login");
   };
 
   return (
-    <AuthContext.Provider value={{ isAuthenticated, user, isAdmin, login, logout }}>
+    <AuthContext.Provider
+      value={{ isAuthenticated, user, isAdmin, login, logout }}
+    >
       {children}
     </AuthContext.Provider>
   );

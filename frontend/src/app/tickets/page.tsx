@@ -1,11 +1,11 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { 
@@ -23,7 +23,8 @@ import {
   FaMobileAlt,
   FaShieldAlt,
   FaCheckCircle,
-  FaTimesCircle
+  FaTimesCircle,
+  FaUser
 } from "react-icons/fa";
 import { format } from "date-fns";
 import QRCode from "react-qr-code";
@@ -55,63 +56,81 @@ export default function TicketsPage() {
   const [showPaymentDialog, setShowPaymentDialog] = useState(false);
   const [paymentProcessing, setPaymentProcessing] = useState(false);
 
+  // --- Start of authentication logic ---
+  const router = useRouter();
+  const [isMounted, setIsMounted] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+
+  useEffect(() => {
+    setIsMounted(true);
+    const token = localStorage.getItem("token");
+    if (token) {
+      setIsAuthenticated(true);
+    } else {
+      setLoading(false); // Stop loading if not authenticated
+    }
+  }, []);
+  // --- End of authentication logic ---
+
   // Mock data - replace with actual API calls
   useEffect(() => {
-    const mockTickets: Ticket[] = [
-      {
-        id: "1",
-        bookingId: "BK001",
-        routeName: "Mumbai Central to Pune",
-        fromStop: "Mumbai Central",
-        toStop: "Pune Station",
-        seatType: "AC",
-        seatCount: 2,
-        fare: 560,
-        status: "PAID",
-        departureTime: "2024-01-15T14:30:00",
-        arrivalTime: "2024-01-15T18:45:00",
-        bookingDate: "2024-01-10T10:30:00",
-        busNumber: "MH-01-AB-1234",
-        paymentId: "PAY001",
-        qrCode: "BK001-PAID-2AC"
-      },
-      {
-        id: "2",
-        bookingId: "BK002",
-        routeName: "Delhi to Gurgaon",
-        fromStop: "Delhi ISBT",
-        toStop: "Gurgaon Sector 29",
-        seatType: "NON_AC",
-        seatCount: 1,
-        fare: 85,
-        status: "PENDING",
-        departureTime: "2024-01-16T09:15:00",
-        arrivalTime: "2024-01-16T10:30:00",
-        bookingDate: "2024-01-12T16:45:00",
-        busNumber: "DL-01-CD-5678"
-      },
-      {
-        id: "3",
-        bookingId: "BK003",
-        routeName: "Bangalore to Mysore",
-        fromStop: "Bangalore Majestic",
-        toStop: "Mysore City Bus Stand",
-        seatType: "AC",
-        seatCount: 1,
-        fare: 320,
-        status: "CANCELLED",
-        departureTime: "2024-01-08T06:00:00",
-        arrivalTime: "2024-01-08T09:30:00",
-        bookingDate: "2024-01-05T14:20:00",
-        busNumber: "KA-01-EF-9012"
-      }
-    ];
-    
-    setTimeout(() => {
-      setTickets(mockTickets);
-      setLoading(false);
-    }, 1000);
-  }, []);
+    if (isAuthenticated && isMounted) {
+        const mockTickets: Ticket[] = [
+          {
+            id: "1",
+            bookingId: "BK001",
+            routeName: "Mumbai Central to Pune",
+            fromStop: "Mumbai Central",
+            toStop: "Pune Station",
+            seatType: "AC",
+            seatCount: 2,
+            fare: 560,
+            status: "PAID",
+            departureTime: "2024-01-15T14:30:00",
+            arrivalTime: "2024-01-15T18:45:00",
+            bookingDate: "2024-01-10T10:30:00",
+            busNumber: "MH-01-AB-1234",
+            paymentId: "PAY001",
+            qrCode: "BK001-PAID-2AC"
+          },
+          {
+            id: "2",
+            bookingId: "BK002",
+            routeName: "Delhi to Gurgaon",
+            fromStop: "Delhi ISBT",
+            toStop: "Gurgaon Sector 29",
+            seatType: "NON_AC",
+            seatCount: 1,
+            fare: 85,
+            status: "PENDING",
+            departureTime: "2024-01-16T09:15:00",
+            arrivalTime: "2024-01-16T10:30:00",
+            bookingDate: "2024-01-12T16:45:00",
+            busNumber: "DL-01-CD-5678"
+          },
+          {
+            id: "3",
+            bookingId: "BK003",
+            routeName: "Bangalore to Mysore",
+            fromStop: "Bangalore Majestic",
+            toStop: "Mysore City Bus Stand",
+            seatType: "AC",
+            seatCount: 1,
+            fare: 320,
+            status: "CANCELLED",
+            departureTime: "2024-01-08T06:00:00",
+            arrivalTime: "2024-01-08T09:30:00",
+            bookingDate: "2024-01-05T14:20:00",
+            busNumber: "KA-01-EF-9012"
+          }
+        ];
+        
+        setTimeout(() => {
+          setTickets(mockTickets);
+          setLoading(false);
+        }, 1000);
+    }
+  }, [isAuthenticated, isMounted]);
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -165,10 +184,8 @@ export default function TicketsPage() {
     setPaymentProcessing(true);
     
     try {
-      // Simulate payment processing
       await new Promise(resolve => setTimeout(resolve, 3000));
       
-      // Update ticket status
       setTickets(prev => prev.map(ticket => 
         ticket.id === selectedTicket.id 
           ? { 
@@ -204,7 +221,6 @@ export default function TicketsPage() {
   };
 
   const downloadTicket = (ticket: Ticket) => {
-    // Simulate PDF download
     const ticketData = {
       bookingId: ticket.bookingId,
       route: ticket.routeName,
@@ -245,7 +261,6 @@ export default function TicketsPage() {
       </CardHeader>
       <CardContent>
         <div className="space-y-4">
-          {/* Route Info */}
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-2">
               <FaMapMarkerAlt className="text-blue-500" />
@@ -259,8 +274,6 @@ export default function TicketsPage() {
               <span className="font-medium">{ticket.toStop}</span>
             </div>
           </div>
-
-          {/* Journey Details */}
           <div className="grid grid-cols-2 gap-4 text-sm">
             <div className="flex items-center space-x-2">
               <FaCalendar className="text-muted-foreground" />
@@ -273,8 +286,6 @@ export default function TicketsPage() {
               </span>
             </div>
           </div>
-
-          {/* Ticket Details */}
           <div className="flex justify-between items-center pt-2 border-t">
             <div>
               <p className="text-sm text-muted-foreground">
@@ -388,7 +399,6 @@ export default function TicketsPage() {
         </DialogHeader>
         {selectedTicket && (
           <div className="space-y-6">
-            {/* Ticket Summary */}
             <Card className="bg-muted/50">
               <CardContent className="pt-4">
                 <div className="space-y-2">
@@ -407,8 +417,6 @@ export default function TicketsPage() {
                 </div>
               </CardContent>
             </Card>
-
-            {/* Payment Methods */}
             <div className="space-y-4">
               <h4 className="font-medium">Select Payment Method</h4>
               <div className="space-y-2">
@@ -426,14 +434,10 @@ export default function TicketsPage() {
                 </Button>
               </div>
             </div>
-
-            {/* Security Note */}
             <div className="flex items-center space-x-2 text-sm text-muted-foreground">
               <FaShieldAlt className="text-green-500" />
               <span>Your payment is secured with 256-bit encryption</span>
             </div>
-
-            {/* Action Buttons */}
             <div className="flex space-x-2">
               <Button variant="outline" onClick={() => setShowPaymentDialog(false)} disabled={paymentProcessing}>
                 Cancel
@@ -461,44 +465,32 @@ export default function TicketsPage() {
     </Dialog>
   );
 
-  if (loading) {
+  if (!isMounted || loading) {
     return (
-      <div className="container mx-auto px-4 py-8">
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold mb-2">My Tickets</h1>
-          <p className="text-muted-foreground">Manage your bus tickets and bookings</p>
-        </div>
-        
-        <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="grid w-full grid-cols-3">
-            <TabsTrigger value="active">Active</TabsTrigger>
-            <TabsTrigger value="upcoming">Upcoming</TabsTrigger>
-            <TabsTrigger value="past">Past</TabsTrigger>
-          </TabsList>
-          
-          <TabsContent value={activeTab} className="mt-6">
-            <div className="grid gap-4">
-              {[...Array(3)].map((_, i) => (
-                <Card key={i}>
-                  <CardHeader>
-                    <Skeleton className="h-6 w-3/4" />
-                    <Skeleton className="h-4 w-1/2" />
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-4">
-                      <Skeleton className="h-4 w-full" />
-                      <Skeleton className="h-4 w-2/3" />
-                      <div className="flex justify-between">
-                        <Skeleton className="h-8 w-20" />
-                        <Skeleton className="h-8 w-24" />
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-primary"></div>
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return (
+      <div className="flex items-center justify-center min-h-screen relative overflow-hidden">
+        <Card className="w-96 animate-scale-in bg-gradient-to-br from-background/80 to-background/60 backdrop-blur-sm border-primary/20 shadow-2xl relative z-10">
+          <CardContent className="pt-6 text-center">
+            <div className="relative inline-block mb-4">
+              <FaUser className="w-16 h-16 mx-auto text-muted-foreground" />
+              <div className="absolute inset-0 bg-gradient-to-r from-blue-500/20 to-purple-500/20 rounded-full blur-xl animate-pulse"></div>
             </div>
-          </TabsContent>
-        </Tabs>
+            <h3 className="text-lg font-semibold mb-2 bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
+              Authentication Required
+            </h3>
+            <p className="text-muted-foreground mb-4">Please sign in to view your tickets</p>
+            <Button onClick={() => router.push("/login")} className="bg-gradient-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600 transform hover:scale-105 transition-all duration-300">
+              Sign In
+            </Button>
+          </CardContent>
+        </Card>
       </div>
     );
   }

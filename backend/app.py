@@ -1,6 +1,7 @@
 from flask import Flask
 from flask_cors import CORS
-from auth.routes import auth_bp
+from routes.auth import auth_bp
+from routes.bus_routes import bus_bp  # ✅ Import bus routes
 from db import db
 from utils.custom_json_encoder import CustomJSONEncoder
 
@@ -17,6 +18,7 @@ app.json_encoder = CustomJSONEncoder
 
 # ✅ Register Blueprints
 app.register_blueprint(auth_bp, url_prefix="/auth")
+app.register_blueprint(bus_bp, url_prefix="/buses")  # ✅ Register bus routes
 
 # ✅ Health Check Route
 @app.route("/", methods=["GET"])
