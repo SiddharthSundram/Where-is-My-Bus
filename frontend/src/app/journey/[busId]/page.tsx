@@ -2,77 +2,54 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { 
   FaBus, 
-  FaMapMarkerAlt, 
   FaClock, 
   FaRoute, 
   FaTicketAlt, 
   FaUsers,
   FaTachometerAlt,
   FaLocationArrow,
-  FaCalendar,
-  FaMoneyBill,
   FaArrowRight,
   FaWifi,
   FaExclamationTriangle,
-  FaUser
+  FaUser,
+  FaSpinner,
+  FaCalendarAlt,
+  FaMoneyBillWave
 } from "react-icons/fa";
-import { format } from "date-fns";
+
+// Interfaces matching your live API response
+interface BusRouteStop {
+  name: string;
+  time: string;
+}
 
 interface Bus {
-  id: string;
+  _id: string;
   busNumber: string;
-  operator: string;
-  type: "AC" | "NON_AC";
+  type: 'ac' | 'non-ac';
   capacity: number;
-  currentLocation: {
-    lat: number;
-    lng: number;
-  };
-  speed: number;
-  status: "ACTIVE" | "INACTIVE" | "MAINTENANCE";
-}
-
-interface Stop {
-  id: string;
-  name: string;
-  location: {
-    lat: number;
-    lng: number;
-  };
-  eta?: number;
-  isCurrent?: boolean;
-  isBoarding?: boolean;
-  isDestination?: boolean;
-}
-
-interface JourneyData {
-  bus: Bus;
   route: {
-    id: string;
-    name: string;
-    distanceKm: number;
-    fromCity: string;
-    toCity: string;
+    city: string;
+    stops: BusRouteStop[];
   };
-  stops: Stop[];
-  schedule: {
-    departureTime: string;
-    arrivalTime: string;
-    estimatedArrival: string;
-  };
-  occupancy: {
-    booked: number;
-    available: number;
-  };
+  status: string;
 }
 
 export default function JourneyTrackerPage() {
@@ -80,163 +57,147 @@ export default function JourneyTrackerPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const busId = params.busId as string;
+
   const fromStop = searchParams.get('fromStop') || '';
   const toStop = searchParams.get('toStop') || '';
   
-  const [journeyData, setJourneyData] = useState<JourneyData | null>(null);
+  // --- State Management ---
+  const [busData, setBusData] = useState<Bus | null>(null);
   const [loading, setLoading] = useState(true);
+  const [apiError, setApiError] = useState<string | null>(null);
   const [selectedSeats, setSelectedSeats] = useState(1);
-  const [seatType, setSeatType] = useState<"AC" | "NON_AC">("AC");
-  const [showBookingPanel, setShowBookingPanel] = useState(false);
-  const [liveEta, setLiveEta] = useState(0);
-  const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-
-  // --- Start of authentication logic ---
   const [isMounted, setIsMounted] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  
+  // State for the booking modal and fare
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [upiId, setUpiId] = useState('');
+  const [isProcessingPayment, setIsProcessingPayment] = useState(false);
+  const [farePerSeat, setFarePerSeat] = useState(0);
 
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:5000";
+
+  // --- Component Lifecycle & Data Fetching ---
   useEffect(() => {
     setIsMounted(true);
     const token = localStorage.getItem("token");
     if (token) {
       setIsAuthenticated(true);
     } else {
-      setLoading(false); // If not authenticated, stop loading
+      setLoading(false); 
     }
   }, []);
-  // --- End of authentication logic ---
 
   useEffect(() => {
-    // Mouse tracking for 3D effects
-    const handleMouseMove = (e: MouseEvent) => {
-      setMousePosition({ x: e.clientX, y: e.clientY });
-    };
-    
-    window.addEventListener('mousemove', handleMouseMove);
-    
-    // Initialize 3D canvas animation
-    const canvas = canvasRef.current;
-    if (canvas) {
-      const ctx = canvas.getContext('2d');
-      if (ctx) {
-        const resizeCanvas = () => {
-          canvas.width = window.innerWidth;
-          canvas.height = window.innerHeight;
-        };
-        resizeCanvas();
-        window.addEventListener('resize', resizeCanvas);
-        
-        const particles = Array.from({ length: 40 }, () => ({
-          x: Math.random() * canvas.width,
-          y: Math.random() * canvas.height,
-          vx: (Math.random() - 0.5) * 0.4,
-          vy: (Math.random() - 0.5) * 0.4,
-          size: Math.random() * 2 + 1,
-          opacity: Math.random() * 0.3 + 0.1,
-          color: Math.random() > 0.5 ? 'rgba(59, 130, 246,' : 'rgba(139, 92, 246,'
-        }));
-
-        const animate = () => {
-          if (!ctx) return;
-          ctx.clearRect(0, 0, canvas.width, canvas.height);
-          
-          particles.forEach((particle) => {
-            particle.x += particle.vx;
-            particle.y += particle.vy;
-            
-            if (particle.x < 0 || particle.x > canvas.width) particle.vx *= -1;
-            if (particle.y < 0 || particle.y > canvas.height) particle.vy *= -1;
-            
-            ctx.beginPath();
-            ctx.arc(particle.x, particle.y, particle.size, 0, Math.PI * 2);
-            ctx.fillStyle = `${particle.color}${particle.opacity})`;
-            ctx.fill();
+    if(isAuthenticated && busId) {
+      const fetchBusDetails = async () => {
+        setLoading(true);
+        setApiError(null);
+        const token = localStorage.getItem("token");
+        try {
+          const response = await fetch(`${API_BASE_URL}/buses/${busId}`, {
+            headers: { 'Authorization': `Bearer ${token}` }
           });
-          
-          requestAnimationFrame(animate);
-        };
-        
-        animate();
+          if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error || 'Failed to fetch bus details');
+          }
+          const data = await response.json();
+          setBusData(data.bus);
+        } catch (error: any) {
+          setApiError(error.message);
+        } finally {
+          setLoading(false);
+        }
+      };
+      fetchBusDetails();
+    }
+  }, [busId, isAuthenticated]);
+  
+  // EFFECT FOR DYNAMIC FARE CALCULATION
+  useEffect(() => {
+    if (busData && fromStop && toStop) {
+      const stops = busData.route.stops.map(s => s.name);
+      const fromIndex = stops.indexOf(fromStop);
+      const toIndex = stops.indexOf(toStop);
+
+      if (fromIndex !== -1 && toIndex !== -1 && toIndex > fromIndex) {
+        const stopsTraveled = toIndex - fromIndex;
+        let newFare = 0;
+        if (stopsTraveled >= 1 && stopsTraveled <= 4) {
+          newFare = 10;
+        } else if (stopsTraveled >= 5 && stopsTraveled <= 7) {
+          newFare = 15;
+        } else if (stopsTraveled >= 8 && stopsTraveled <= 14) {
+          newFare = 20;
+        } else {
+          newFare = 25;
+        }
+        setFarePerSeat(newFare);
       }
     }
-    
-    return () => {
-      window.removeEventListener('mousemove', handleMouseMove);
-    };
-  }, []);
+  }, [busData, fromStop, toStop]);
 
-  // Mock data - replace with actual API calls
+  // Effect for the background canvas animation
   useEffect(() => {
-    if(isAuthenticated && isMounted) {
-        const mockJourneyData: JourneyData = {
-          bus: {
-            id: busId,
-            busNumber: "MH-01-AB-1234",
-            operator: "MSRTC",
-            type: "AC",
-            capacity: 45,
-            currentLocation: { lat: 19.0760, lng: 72.8777 }, // Mumbai
-            speed: 45,
-            status: "ACTIVE"
-          },
-          route: {
-            id: "route1",
-            name: `${fromStop} to ${toStop}`,
-            distanceKm: 150,
-            fromCity: fromStop,
-            toCity: toStop
-          },
-          stops: [
-            { id: "1", name: fromStop, location: { lat: 19.0760, lng: 72.8777 }, isCurrent: true, isBoarding: true },
-            { id: "2", name: "Dadar", location: { lat: 19.0176, lng: 72.8562 }, eta: 15 },
-            { id: "3", name: "Thane", location: { lat: 19.2183, lng: 72.9781 }, eta: 35 },
-            { id: "4", name: "Lonavala", location: { lat: 18.7500, lng: 73.4000 }, eta: 90 },
-            { id: "5", name: toStop, location: { lat: 18.5204, lng: 73.8567 }, eta: 150, isDestination: true }
-          ],
-          schedule: {
-            departureTime: "2024-01-15T14:30:00",
-            arrivalTime: "2024-01-15T18:45:00",
-            estimatedArrival: "2024-01-15T19:15:00"
-          },
-          occupancy: {
-            booked: 38,
-            available: 7
-          }
-        };
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    let animationFrameId: number;
+    const resizeCanvas = () => { canvas.width = window.innerWidth; canvas.height = document.body.scrollHeight; };
+    resizeCanvas();
+    window.addEventListener('resize', resizeCanvas);
+    const particles = Array.from({ length: 40 }, () => ({
+        x: Math.random() * canvas.width, y: Math.random() * canvas.height,
+        vx: (Math.random() - 0.5) * 0.4, vy: (Math.random() - 0.5) * 0.4,
+        size: Math.random() * 2 + 1, opacity: Math.random() * 0.3 + 0.1,
+        color: Math.random() > 0.5 ? 'rgba(59, 130, 246,' : 'rgba(139, 92, 246,'
+    }));
+    const animate = () => {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        particles.forEach(p => {
+            p.x += p.vx; p.y += p.vy;
+            if (p.x < 0 || p.x > canvas.width) p.vx *= -1;
+            if (p.y < 0 || p.y > canvas.height) p.vy *= -1;
+            ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+            ctx.fillStyle = `${p.color}${p.opacity})`; ctx.fill();
+        });
+        animationFrameId = requestAnimationFrame(animate);
+    };
+    animate();
+    return () => {
+        window.removeEventListener('resize', resizeCanvas);
+        cancelAnimationFrame(animationFrameId);
+    };
+  }, [busData]);
 
-        setTimeout(() => {
-          setJourneyData(mockJourneyData);
-          setLiveEta(150); // Initial ETA in minutes
-          setLoading(false);
-        }, 1500);
-
-        // Simulate real-time updates
-        const interval = setInterval(() => {
-          setLiveEta(prev => Math.max(0, prev - 1));
-        }, 60000); // Update every minute
-
-        return () => clearInterval(interval);
+  // --- Helper Functions ---
+  const findStopTime = (stops: BusRouteStop[] = [], stopName: string) => stops.find(s => s.name === stopName)?.time || "N/A";
+  
+  const handlePayment = async () => {
+    if (!upiId.trim()) {
+      alert("Please enter your UPI ID.");
+      return;
     }
-  }, [busId, fromStop, toStop, isAuthenticated, isMounted]);
-
-  const calculateFare = () => {
-    if (!journeyData) return 0;
-    const baseFare = journeyData.route.distanceKm * 3; // ₹3 per km
-    const multiplier = seatType === "AC" ? 1.5 : 1;
-    return Math.round(baseFare * multiplier * selectedSeats);
-  };
-
-  const handleBookTicket = () => {
-    setShowBookingPanel(true);
-  };
-
-  const handleConfirmBooking = () => {
-    // Simulate booking process
-    alert(`Booking confirmed! ${selectedSeats} ${seatType} seat(s) for ₹${calculateFare()}`);
-    setShowBookingPanel(false);
+    setIsProcessingPayment(true);
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    setIsProcessingPayment(false);
+    setIsModalOpen(false);
+    alert(`Payment successful! Your ticket for ${selectedSeats} seat(s) is confirmed. Redirecting...`);
     router.push("/tickets");
   };
+
+  // Mock data for UI elements not present in the API response
+  const operator = "City Transports";
+  const speed = Math.floor(Math.random() * (55 - 35) + 35);
+  const seatsAvailable = busData ? Math.floor(Math.random() * (busData.capacity * 0.6)) : 0;
+  const seatsBooked = busData ? busData.capacity - seatsAvailable : 0;
+  const totalFare = farePerSeat * selectedSeats;
+  const liveEta = Math.floor(Math.random() * (150 - 90) + 90);
+
+  // --- RENDER LOGIC ---
 
   if (!isMounted || loading) {
     return (
@@ -248,56 +209,42 @@ export default function JourneyTrackerPage() {
 
   if (!isAuthenticated) {
     return (
-      <div className="flex items-center justify-center min-h-screen relative overflow-hidden">
-        <Card className="w-96 animate-scale-in bg-gradient-to-br from-background/80 to-background/60 backdrop-blur-sm border-primary/20 shadow-2xl relative z-10">
-          <CardContent className="pt-6 text-center">
-            <div className="relative inline-block mb-4">
-              <FaUser className="w-16 h-16 mx-auto text-muted-foreground" />
-              <div className="absolute inset-0 bg-gradient-to-r from-blue-500/20 to-purple-500/20 rounded-full blur-xl animate-pulse"></div>
-            </div>
-            <h3 className="text-lg font-semibold mb-2 bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
-              Authentication Required
-            </h3>
-            <p className="text-muted-foreground mb-4">Please sign in to view journey details</p>
-            <Button onClick={() => router.push("/login")} className="bg-gradient-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600 transform hover:scale-105 transition-all duration-300">
-              Sign In
-            </Button>
-          </CardContent>
+      <div className="flex items-center justify-center min-h-screen">
+        <Card className="w-96 text-center p-6 bg-background/80 backdrop-blur-sm">
+          <FaUser className="w-16 h-16 mx-auto text-muted-foreground mb-4" />
+          <h3 className="text-lg font-semibold mb-2">Authentication Required</h3>
+          <p className="text-muted-foreground mb-4">Please sign in to view journey details.</p>
+          <Button onClick={() => router.push("/login")}>Sign In</Button>
         </Card>
       </div>
     );
   }
 
-  if (!journeyData) {
+  if (apiError || !busData) {
     return (
-      <div className="container mx-auto px-4 py-8 relative overflow-hidden">
-        <canvas 
-          ref={canvasRef}
-          className="absolute inset-0 w-full h-full pointer-events-none"
-          style={{ zIndex: -1 }}
-        />
-        
-        <Card className="text-center py-12 bg-gradient-to-br from-background/80 to-background/60 backdrop-blur-sm border-primary/20 animate-scale-in">
-          <CardContent>
-            <div className="relative inline-block mb-4">
-              <FaBus className="text-6xl text-muted-foreground mx-auto" />
-              <div className="absolute inset-0 bg-gradient-to-r from-blue-500/20 to-purple-500/20 rounded-full blur-xl animate-pulse"></div>
-            </div>
-            <h3 className="text-xl font-semibold mb-2 bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
-              Bus not found
-            </h3>
-            <p className="text-muted-foreground mb-4">The bus you're looking for doesn't exist or is not available.</p>
-            <Button asChild className="bg-gradient-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600 transform hover:scale-105 transition-all duration-300">
-              <a href="/find">Find Another Bus</a>
-            </Button>
-          </CardContent>
-        </Card>
+      <div className="container mx-auto px-4 py-8">
+         <Card className="text-center p-8 bg-background/80 backdrop-blur-sm">
+            <FaExclamationTriangle className="text-6xl text-destructive mx-auto mb-4" />
+            <h3 className="text-xl font-semibold mb-2">Could Not Load Bus Details</h3>
+            <p className="text-muted-foreground mb-4">
+              <strong>Error:</strong> {apiError || "The requested bus could not be found."}
+            </p>
+            <Button onClick={() => router.push('/find')}>Find Another Bus</Button>
+         </Card>
       </div>
     );
   }
 
-  const { bus, route, stops, schedule, occupancy } = journeyData;
-  const fare = calculateFare();
+  const { busNumber, type, capacity, route, status } = busData;
+  const departureTime = findStopTime(route.stops, fromStop);
+  const arrivalTime = findStopTime(route.stops, toStop);
+  const upiPaymentLink = `upi://pay?pa=${upiId}&pn=CityBusApp&am=${totalFare}&cu=INR&tn=Booking for ${busNumber}`;
+  
+  const today = new Date();
+  const day = String(today.getDate()).padStart(2, '0');
+  const month = String(today.getMonth() + 1).padStart(2, '0'); // Months are 0-indexed
+  const year = today.getFullYear();
+  const formattedDate = `${day}/${month}/${year}`;
 
   return (
     <div className="container mx-auto px-4 py-8 relative overflow-hidden">
@@ -306,317 +253,214 @@ export default function JourneyTrackerPage() {
         className="absolute inset-0 w-full h-full pointer-events-none"
         style={{ zIndex: -1 }}
       />
-
-      <div className="absolute inset-0 pointer-events-none">
-        {[...Array(5)].map((_, i) => (
-          <div
-            key={i}
-            className="absolute rounded-full bg-gradient-to-br from-blue-500/10 via-purple-500/10 to-pink-500/10 backdrop-blur-sm border border-blue-500/20 animate-pulse"
-            style={{
-              width: `${30 + Math.random() * 50}px`,
-              height: `${30 + Math.random() * 50}px`,
-              top: `${Math.random() * 100}%`,
-              left: `${Math.random() * 100}%`,
-              animationDelay: `${Math.random() * 2}s`,
-              transform: `translate(${mousePosition.x * 0.01}px, ${mousePosition.y * 0.01}px)`
-            }}
-          />
-        ))}
-      </div>
-
       <div className="relative z-10">
         <div className="mb-8 animate-fade-in">
           <Badge variant="outline" className="mb-4 text-sm px-4 py-2 bg-gradient-to-r from-blue-500/10 to-purple-500/10 border-blue-500/30 text-blue-300">
-            🚌 Live Journey Tracker
+            🚌 Journey Details & Booking
           </Badge>
           <h1 className="text-4xl md:text-6xl font-bold mb-2 bg-gradient-to-r from-blue-400 via-purple-500 to-pink-500 bg-clip-text text-transparent animate-gradient-text">
-            {route.name}
+            {fromStop} to {toStop}
           </h1>
           <p className="text-xl text-muted-foreground max-w-2xl opacity-90">
-            Track your bus in real-time and book tickets instantly
+            Confirm your trip details and book your tickets instantly.
           </p>
         </div>
 
         <div className="grid gap-6 lg:grid-cols-3">
-          {/* Main Content */}
           <div className="lg:col-span-2 space-y-6">
-            {/* Live Map */}
             <Card className="bg-gradient-to-br from-background/80 to-background/60 backdrop-blur-sm border-primary/20 animate-scale-in">
               <CardHeader>
                 <div className="flex justify-between items-center">
-                  <div>
-                    <CardTitle className="flex items-center text-xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
-                      <FaLocationArrow className="mr-2" />
-                      Live Tracking
-                    </CardTitle>
-                    <CardDescription className="opacity-90">Real-time bus location and route</CardDescription>
-                  </div>
+                  <CardTitle className="flex items-center text-xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
+                    <FaLocationArrow className="mr-2" /> Live Tracking
+                  </CardTitle>
                   <div className="flex items-center space-x-2">
-                    <Badge variant={bus.status === "ACTIVE" ? "default" : "secondary"} className="bg-green-500/20 text-green-300 border-green-500/30">
-                      {bus.status === "ACTIVE" ? "Active" : bus.status}
+                    <Badge variant={status === "ACTIVE" ? "default" : "secondary"} className="bg-green-500/20 text-green-300 border-green-500/30">
+                      {status}
                     </Badge>
                     <div className="flex items-center text-sm text-green-400">
-                      <FaWifi className="mr-1 animate-pulse" />
-                      Live
+                      <FaWifi className="mr-1 animate-pulse" /> Live
                     </div>
                   </div>
                 </div>
               </CardHeader>
               <CardContent>
-                <div className="h-96 bg-gradient-to-br from-blue-50/10 via-purple-50/10 to-pink-50/10 dark:from-blue-950/20 dark:via-purple-950/20 dark:to-pink-950/20 rounded-lg border relative overflow-hidden">
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <div className="text-center">
-                      <div className="relative mb-8">
-                        <div className="w-80 h-2 bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500 mx-auto rounded-full animate-pulse"></div>
-                        <div className="absolute top-0 left-1/2 transform -translate-x-1/2 -translate-y-1/2">
-                          <div className="relative animate-bounce">
-                            <FaBus className="text-4xl text-blue-500 drop-shadow-lg" />
-                            <div className="absolute -top-2 -right-2 w-4 h-4 bg-green-500 rounded-full animate-pulse shadow-lg"></div>
-                          </div>
-                        </div>
-                        <div className="absolute top-0 left-0 transform -translate-x-1/2 -translate-y-1/2">
-                          <div className="w-6 h-6 bg-gradient-to-r from-blue-500 to-purple-500 rounded-full border-2 border-white shadow-lg"></div>
-                        </div>
-                        <div className="absolute top-0 right-0 transform translate-x-1/2 -translate-y-1/2">
-                          <div className="w-6 h-6 bg-gradient-to-r from-purple-500 to-pink-500 rounded-full border-2 border-white shadow-lg"></div>
-                        </div>
-                      </div>
-                      <div className="mt-16 space-y-3">
-                        <p className="text-2xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
-                          {bus.busNumber}
-                        </p>
-                        <div className="flex items-center justify-center space-x-4 text-sm">
-                          <div className="flex items-center text-blue-400">
-                            <FaTachometerAlt className="mr-1" />
-                            <span className="font-semibold">{bus.speed} km/h</span>
-                          </div>
-                          <div className="flex items-center text-purple-400">
-                            <FaLocationArrow className="mr-1" />
-                            <span className="font-semibold">Live</span>
-                          </div>
-                        </div>
-                        <p className="text-sm text-muted-foreground opacity-90">
-                          Current Location: {bus.currentLocation.lat.toFixed(4)}, {bus.currentLocation.lng.toFixed(4)}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
+                <div className="h-64 flex items-center justify-center text-muted-foreground bg-gradient-to-br from-blue-50/10 to-pink-50/10 dark:from-blue-950/20 dark:to-pink-950/20 rounded-lg border">
+                  <p>Live map integration coming soon...</p>
                 </div>
               </CardContent>
             </Card>
 
-            {/* Stop List */}
             <Card className="bg-gradient-to-br from-background/80 to-background/60 backdrop-blur-sm border-primary/20 animate-scale-in" style={{ animationDelay: '0.1s' }}>
               <CardHeader>
                 <CardTitle className="flex items-center text-xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
-                  <FaRoute className="mr-2" />
-                  Route Stops
+                  <FaRoute className="mr-2" /> Route Stops
                 </CardTitle>
-                <CardDescription className="opacity-90">Upcoming stops and estimated arrival times</CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
-                  {stops.map((stop, index) => (
-                    <div key={stop.id} className="flex items-center space-x-4 group hover:bg-primary/5 rounded-lg p-2 transition-all duration-300">
-                      <div className="flex flex-col items-center">
-                        <div className={`w-6 h-6 rounded-full border-2 ${
-                          stop.isCurrent ? "bg-blue-500 border-blue-500 animate-pulse shadow-lg" :
-                          stop.isBoarding ? "bg-green-500 border-green-500 shadow-lg" :
-                          stop.isDestination ? "bg-red-500 border-red-500 shadow-lg" :
-                          "bg-gray-300 border-gray-300"
-                        }`}></div>
-                        {index < stops.length - 1 && (
-                          <div className="w-0.5 h-10 bg-gradient-to-b from-blue-300 to-purple-300 mt-2"></div>
-                        )}
-                      </div>
-                      <div className="flex-1">
-                        <div className="flex justify-between items-center">
-                          <div>
-                            <p className={`font-medium ${
-                              stop.isCurrent ? "text-blue-600 dark:text-blue-400" :
-                              stop.isBoarding ? "text-green-600 dark:text-green-400" :
-                              stop.isDestination ? "text-red-600 dark:text-red-400" : ""
-                            }`}>
+                  {route.stops.map((stop, index) => {
+                    const isBoarding = stop.name === fromStop;
+                    const isDestination = stop.name === toStop;
+                    return (
+                      <div key={index} className="flex items-center space-x-4">
+                        <div className="flex flex-col items-center">
+                          <div className={`w-6 h-6 rounded-full border-2 ${isBoarding ? "bg-green-500 border-green-500 shadow-lg" : isDestination ? "bg-red-500 border-red-500 shadow-lg" : "bg-gray-300 border-gray-300"}`}></div>
+                          {index < route.stops.length - 1 && (<div className="w-0.5 h-10 bg-gradient-to-b from-blue-300 to-purple-300 mt-2"></div>)}
+                        </div>
+                        <div className="flex-1 flex justify-between items-center">
+                           <p className={`font-medium ${isBoarding ? "text-green-600 dark:text-green-400" : isDestination ? "text-red-600 dark:text-red-400" : ""}`}>
                               {stop.name}
-                              {stop.isBoarding && <Badge className="ml-2 text-xs bg-green-500/20 text-green-300 border-green-500/30">Boarding</Badge>}
-                              {stop.isDestination && <Badge className="ml-2 text-xs bg-red-500/20 text-red-300 border-red-500/30">Destination</Badge>}
+                              {isBoarding && <Badge className="ml-2 text-xs bg-green-500/20 text-green-300 border-green-500/30">Boarding</Badge>}
+                              {isDestination && <Badge className="ml-2 text-xs bg-red-500/20 text-red-300 border-red-500/30">Destination</Badge>}
                             </p>
-                            {stop.eta && (
-                              <p className="text-sm text-muted-foreground opacity-90">
-                                ETA: {stop.eta} min
-                              </p>
-                            )}
-                          </div>
-                          {stop.eta && (
-                            <div className="text-right">
-                              <p className="text-sm font-medium bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
-                                {format(new Date(Date.now() + stop.eta * 60000), "HH:mm")}
-                              </p>
-                            </div>
-                          )}
+                           <p className="text-sm font-medium">{stop.time}</p>
                         </div>
                       </div>
-                    </div>
-                  ))}
+                    )
+                  })}
                 </div>
               </CardContent>
             </Card>
           </div>
 
-          {/* Sidebar */}
           <div className="space-y-6">
             <Card className="bg-gradient-to-br from-background/80 to-background/60 backdrop-blur-sm border-primary/20 animate-scale-in" style={{ animationDelay: '0.2s' }}>
               <CardHeader>
                 <CardTitle className="flex items-center text-xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
-                  <FaBus className="mr-2" />
-                  Bus Details
+                  <FaBus className="mr-2" /> Bus Details
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">Bus Number</span>
-                  <span className="font-medium bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">{bus.busNumber}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">Operator</span>
-                  <span className="font-medium">{bus.operator}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">Type</span>
-                  <Badge variant={bus.type === "AC" ? "default" : "secondary"} className="bg-blue-500/20 text-blue-300 border-blue-500/30">
-                    {bus.type}
-                  </Badge>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">Capacity</span>
-                  <span className="font-medium">{bus.capacity} seats</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">Speed</span>
-                  <span className="font-medium flex items-center">
-                    <FaTachometerAlt className="mr-1 text-blue-400" />
-                    {bus.speed} km/h
-                  </span>
-                </div>
+                <div className="flex items-center justify-between"><span className="text-sm text-muted-foreground">Bus Number</span><span className="font-medium">{busNumber}</span></div>
+                <div className="flex items-center justify-between"><span className="text-sm text-muted-foreground">Operator</span><span className="font-medium">{operator}</span></div>
+                <div className="flex items-center justify-between"><span className="text-sm text-muted-foreground">Type</span><Badge variant={type === "ac" ? "default" : "secondary"} className="bg-blue-500/20 text-blue-300 border-blue-500/30">{type.toUpperCase()}</Badge></div>
+                <div className="flex items-center justify-between"><span className="text-sm text-muted-foreground">Capacity</span><span className="font-medium">{capacity} seats</span></div>
+                <div className="flex items-center justify-between"><span className="text-sm text-muted-foreground">Speed</span><span className="font-medium flex items-center"><FaTachometerAlt className="mr-1 text-blue-400" />{speed} km/h</span></div>
               </CardContent>
             </Card>
 
             <Card className="bg-gradient-to-br from-background/80 to-background/60 backdrop-blur-sm border-primary/20 animate-scale-in" style={{ animationDelay: '0.3s' }}>
               <CardHeader>
                 <CardTitle className="flex items-center text-xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
-                  <FaClock className="mr-2" />
-                  Journey Info
+                  <FaClock className="mr-2" /> Journey Info
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">Distance</span>
-                  <span className="font-medium">{route.distanceKm} km</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">Departure</span>
-                  <span className="font-medium">
-                    {format(new Date(schedule.departureTime), "HH:mm")}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">Arrival</span>
-                  <span className="font-medium">
-                    {format(new Date(schedule.arrivalTime), "HH:mm")}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">Live ETA</span>
-                  <span className="font-medium text-green-400">
-                    {Math.floor(liveEta / 60)}h {liveEta % 60}m
-                  </span>
-                </div>
+                  <div className="flex items-center justify-between"><span className="text-sm text-muted-foreground">Departure</span><span className="font-medium">{departureTime}</span></div>
+                  <div className="flex items-center justify-between"><span className="text-sm text-muted-foreground">Arrival</span><span className="font-medium">{arrivalTime}</span></div>
+                  <div className="flex items-center justify-between"><span className="text-sm text-muted-foreground">Live ETA</span><span className="font-medium text-green-400">{Math.floor(liveEta / 60)}h {liveEta % 60}m</span></div>
               </CardContent>
             </Card>
 
             <Card className="bg-gradient-to-br from-background/80 to-background/60 backdrop-blur-sm border-primary/20 animate-scale-in" style={{ animationDelay: '0.4s' }}>
               <CardHeader>
                 <CardTitle className="flex items-center text-xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
-                  <FaUsers className="mr-2" />
-                  Occupancy
+                  <FaUsers className="mr-2" /> Occupancy
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <div className="flex justify-between text-sm">
-                    <span>Booked</span>
-                    <span>{occupancy.booked}/{bus.capacity}</span>
+                  <div className="space-y-2">
+                    <div className="flex justify-between text-sm"><span>Booked</span><span>{seatsBooked}/{capacity}</span></div>
+                    <Progress value={(seatsBooked / capacity) * 100} className="h-2" />
                   </div>
-                  <Progress value={(occupancy.booked / bus.capacity) * 100} className="h-2" />
-                </div>
-                <div className="text-center">
-                  <Badge variant="secondary" className="bg-green-500/20 text-green-300 border-green-500/30">
-                    {occupancy.available} seats available
-                  </Badge>
-                </div>
+                  <div className="text-center">
+                    <Badge variant="secondary" className="bg-green-500/20 text-green-300 border-green-500/30">{seatsAvailable} seats available</Badge>
+                  </div>
               </CardContent>
             </Card>
 
             <Card className="bg-gradient-to-br from-background/80 to-background/60 backdrop-blur-sm border-primary/20 animate-scale-in" style={{ animationDelay: '0.5s' }}>
               <CardHeader>
                 <CardTitle className="flex items-center text-xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
-                  <FaTicketAlt className="mr-2" />
-                  Book Ticket
+                  <FaTicketAlt className="mr-2" /> Book Ticket
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="space-y-2">
-                  <Label className="text-sm font-semibold">Seat Type</Label>
-                  <Tabs value={seatType} onValueChange={(value) => setSeatType(value as "AC" | "NON_AC")}>
-                    <TabsList className="grid w-full grid-cols-2 bg-gradient-to-r from-blue-500/10 to-purple-500/10">
-                      <TabsTrigger value="AC" className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-blue-500 data-[state=active]:to-purple-500 data-[state=active]:text-white">
-                        AC
-                      </TabsTrigger>
-                      <TabsTrigger value="NON_AC" className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-blue-500 data-[state=active]:to-purple-500 data-[state=active]:text-white">
-                        Non-AC
-                      </TabsTrigger>
-                    </TabsList>
-                  </Tabs>
-                </div>
-
-                <div className="space-y-2">
                   <Label className="text-sm font-semibold">Number of Seats</Label>
                   <div className="flex items-center space-x-2">
-                    <Button 
-                      variant="outline" 
-                      size="sm"
-                      onClick={() => setSelectedSeats(Math.max(1, selectedSeats - 1))}
-                      disabled={selectedSeats <= 1}
-                    >
-                      -
-                    </Button>
+                    <Button variant="outline" size="sm" onClick={() => setSelectedSeats(Math.max(1, selectedSeats - 1))} disabled={selectedSeats <= 1}>-</Button>
                     <span className="font-medium min-w-[2rem] text-center">{selectedSeats}</span>
-                    <Button 
-                      variant="outline" 
-                      size="sm"
-                      onClick={() => setSelectedSeats(Math.min(occupancy.available, selectedSeats + 1))}
-                      disabled={selectedSeats >= occupancy.available}
-                    >
-                      +
-                    </Button>
+                    <Button variant="outline" size="sm" onClick={() => setSelectedSeats(Math.min(seatsAvailable, selectedSeats + 1))} disabled={selectedSeats >= seatsAvailable}>+</Button>
                   </div>
                 </div>
-
                 <div className="pt-4 border-t">
                   <div className="flex justify-between items-center mb-4">
                     <span className="text-lg font-semibold">Total Fare</span>
-                    <span className="text-2xl font-bold bg-gradient-to-r from-green-400 to-emerald-400 bg-clip-text text-transparent">
-                      ₹{fare}
-                    </span>
+                    <span className="text-2xl font-bold bg-gradient-to-r from-green-400 to-emerald-400 bg-clip-text text-transparent">₹{totalFare}</span>
                   </div>
-                  <Button 
-                    onClick={handleBookTicket}
-                    className="w-full bg-gradient-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600 transform hover:scale-105 transition-all duration-300 shadow-lg hover:shadow-xl"
-                    disabled={occupancy.available === 0}
-                  >
-                    <FaArrowRight className="mr-2" />
-                    Book Now
-                  </Button>
+                  
+                  <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
+                    <DialogTrigger asChild>
+                      <Button className="w-full bg-gradient-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600 transform hover:scale-105 transition-all duration-300 shadow-lg hover:shadow-xl" disabled={seatsAvailable === 0}>
+                        <FaArrowRight className="mr-2" /> Book Now
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent className="sm:max-w-[500px] bg-background/80 backdrop-blur-sm">
+                      <DialogHeader>
+                        <DialogTitle className="text-2xl">Confirm Your Booking</DialogTitle>
+                        <DialogDescription>
+                          Please verify your journey details before payment.
+                        </DialogDescription>
+                      </DialogHeader>
+
+                      <div className="my-4 p-4 border rounded-lg bg-primary/5">
+                        <h3 className="font-semibold mb-4 text-lg">Journey Summary</h3>
+                        <div className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
+                            <div className="flex items-center"><FaBus className="mr-2 text-primary" /> Bus Number:</div>
+                            <div className="font-semibold">{busNumber} ({type.toUpperCase()})</div>
+                            
+                            <div className="flex items-center"><FaRoute className="mr-2 text-primary" /> Route:</div>
+                            <div className="font-semibold">{fromStop} → {toStop}</div>
+                            
+                            <div className="flex items-center"><FaUsers className="mr-2 text-primary" /> Passengers:</div>
+                            <div className="font-semibold">{selectedSeats}</div>
+                            
+                            <div className="flex items-center"><FaCalendarAlt className="mr-2 text-primary" /> Date:</div>
+                            <div className="font-semibold">{formattedDate}</div>
+                            
+                            <div className="flex items-center font-bold text-base"><FaMoneyBillWave className="mr-2 text-primary" /> Total Fare:</div>
+                            <div className="font-bold text-lg text-primary">₹{totalFare}</div>
+                        </div>
+                      </div>
+                      
+                      <div className="space-y-3 pt-4 border-t">
+                         <h3 className="text-lg font-semibold">Payment via UPI</h3>
+                         <div className="flex flex-col md:flex-row items-center gap-4">
+                            <div className="flex-1 w-full space-y-1">
+                                <Label htmlFor="upiId">Enter UPI ID</Label>
+                                <Input id="upiId" placeholder="yourname@upi" value={upiId} onChange={(e) => setUpiId(e.target.value)} />
+                            </div>
+                            <div className="text-muted-foreground">OR</div>
+                            <div className="text-center">
+                                <p className="text-sm mb-2">Scan QR</p>
+                                <img
+                                  src={`https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${encodeURIComponent(upiPaymentLink)}`}
+                                  alt="UPI QR Code"
+                                  className="rounded-md mx-auto"
+                                />
+                            </div>
+                         </div>
+                      </div>
+
+                      <DialogFooter>
+                        <Button
+                          type="submit"
+                          size="lg"
+                          className="w-full mt-4"
+                          onClick={handlePayment}
+                          disabled={isProcessingPayment || !upiId}
+                        >
+                          {isProcessingPayment ? (
+                            <><FaSpinner className="mr-2 h-4 w-4 animate-spin" /> Processing...</>
+                          ) : (
+                            `Confirm & Pay ₹${totalFare}`
+                          )}
+                        </Button>
+                      </DialogFooter>
+                    </DialogContent>
+                  </Dialog>
                 </div>
               </CardContent>
             </Card>
