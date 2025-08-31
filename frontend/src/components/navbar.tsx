@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Button } from "@/components/ui/button";
@@ -36,12 +36,67 @@ import {
 } from "react-icons/fa";
 import { useAuth } from "@/context/AuthContext";
 
+const API_BASE_URL = "http://127.0.0.1:5000";
+
+// Define the UserProfile interface to type the fetched data
+interface UserProfile {
+  id: string;
+  name: string;
+  email: string;
+  role: "USER" | "ADMIN";
+}
+
 export function Navbar() {
   const [isOpen, setIsOpen] = useState(false);
   const pathname = usePathname();
   const { theme, setTheme } = useTheme();
   const { isAuthenticated, user, isAdmin, logout } = useAuth();
   const [notificationCount] = useState(3);
+
+  // State to store detailed user profile fetched specifically for the navbar
+  const [navUser, setNavUser] = useState<UserProfile | null>(null);
+
+  useEffect(() => {
+    // Function to fetch user profile data
+    const fetchUserProfileForNav = async () => {
+      const token = localStorage.getItem("token");
+      // If user is not authenticated or no token exists, do nothing.
+      if (!isAuthenticated || !token) {
+        setNavUser(null); // Clear user data if logged out
+        return;
+      }
+
+      try {
+        const response = await fetch(`${API_BASE_URL}/auth/profile`, {
+          method: "GET",
+          headers: {
+            "Authorization": token,
+          },
+        });
+
+        if (response.status === 401) {
+          logout(); // Log out if token is invalid
+          return;
+        }
+
+        if (!response.ok) {
+          throw new Error("Failed to fetch profile data for navbar.");
+        }
+
+        const data = await response.json();
+        setNavUser(data.user); // Store fetched user data in state
+      } catch (err) {
+        console.error("Error fetching profile for navbar:", err);
+      }
+    };
+
+    fetchUserProfileForNav();
+  }, [isAuthenticated, logout]); // Rerun this effect when authentication state changes
+
+  // Use the freshly fetched user data (`navUser`) if available,
+  // otherwise fallback to the data from AuthContext (`user`) as a placeholder.
+  const displayUser = navUser || user;
+
 
   const publicNavItems = [
     { href: "/", label: "Home", icon: FaHome },
@@ -141,13 +196,22 @@ export function Navbar() {
                   </Link>
                 </Button>
 
-                {/* User Menu */}
+                {/* User Menu dynamically populated */}
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button variant="ghost" className="relative h-8 w-8 rounded-full">
                       <Avatar className="h-8 w-8">
-                        <AvatarImage src="/avatars/01.png" alt="@user" />
-                        <AvatarFallback>U</AvatarFallback>
+                        {/* Dynamic avatar image from DiceBear based on user name */}
+                        <AvatarImage
+                          src={displayUser?.name ? `https://api.dicebear.com/7.x/initials/svg?seed=${displayUser.name}` : undefined}
+                          alt={displayUser?.name || "User"}
+                        />
+                        {/* Fallback to user initials if image fails or name exists */}
+                        <AvatarFallback>
+                          {displayUser?.name
+                            ? displayUser.name.split(' ').map((n) => n[0]).join('')
+                            : "U"}
+                        </AvatarFallback>
                       </Avatar>
                     </Button>
                   </DropdownMenuTrigger>
@@ -155,10 +219,10 @@ export function Navbar() {
                     <DropdownMenuLabel className="font-normal">
                       <div className="flex flex-col space-y-1">
                         <p className="text-sm font-medium leading-none">
-                          {user?.name || "User"}
+                          {displayUser?.name || "Loading..."}
                         </p>
                         <p className="text-xs leading-none text-muted-foreground">
-                          {user?.email || "user@example.com"}
+                          {displayUser?.email || "..."}
                         </p>
                       </div>
                     </DropdownMenuLabel>

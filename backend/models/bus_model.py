@@ -11,8 +11,7 @@ class BusModel:
         """Convert MongoDB ObjectId to string for JSON response"""
         if not bus:
             return None
-        if "_id" in bus:
-            bus["_id"] = str(bus["_id"])
+        bus["_id"] = str(bus["_id"])
         return bus
 
     @staticmethod
@@ -28,33 +27,31 @@ class BusModel:
         route=None
     ):
         """
-        Create a new bus with nested routes + stops inside a single 'bus' object.
+        Create a new bus with nested routes + stops in a flat structure.
         """
         try:
             bus_data = {
-                "bus": {
-                    "_id": str(ObjectId()),  # ✅ Mongo ObjectId as string
-                    "id": str(uuid.uuid4()),
+                "_id": ObjectId(),
+                "id": str(uuid.uuid4()),
 
-                    # Bus Info
-                    "busCategory": bus_category,  # ✅ State or Private
-                    "busNumber": bus_number,      # ✅ Bus name like 1A , 215A
-                    "type": bus_type,              # ✅ ac or non-ac
-                    "capacity": int(capacity),
-                    "registrationNo": registration_no,
-                    "gpsDeviceId": gps_device_id,           
+                # Bus Info
+                "busCategory": bus_category,     # ✅ State or Private
+                "busNumber": bus_number,         # ✅ Bus name like 1A, 215A
+                "type": bus_type,                # ✅ ac or non-ac
+                "capacity": int(capacity),
+                "registrationNo": registration_no,
+                "gpsDeviceId": gps_device_id,           
 
-                    # Location & Status
-                    "currentLocation": current_location if current_location else {},
-                    "status": status,
+                # Location & Status
+                "currentLocation": current_location if current_location else {},
+                "status": status,
 
-                    # Timestamps
-                    "createdAt": datetime.utcnow(),
-                    "updatedAt": datetime.utcnow(),
+                # Timestamps
+                "createdAt": datetime.utcnow(),
+                "updatedAt": datetime.utcnow(),
 
-                    # Routes + Stops
-                    "route": route if route else {}
-                }
+                # Routes + Stops
+                "route": route if route else {}
             }
 
             BusModel.collection.insert_one(bus_data)
@@ -76,7 +73,7 @@ class BusModel:
     def get_bus_by_id(bus_id):
         """Fetch a single bus by its unique ID"""
         try:
-            bus = BusModel.collection.find_one({"bus.id": bus_id})
+            bus = BusModel.collection.find_one({"id": bus_id})
             return BusModel.serialize_bus(bus)
         except Exception as e:
             raise Exception(f"Error fetching bus: {str(e)}")
@@ -88,10 +85,10 @@ class BusModel:
             if isinstance(update_data, list):
                 raise ValueError("Invalid update format: expected an object, got a list.")
 
-            update_data["bus.updatedAt"] = datetime.utcnow()
+            update_data["updatedAt"] = datetime.utcnow()
             result = BusModel.collection.update_one(
-                {"bus.id": bus_id},
-                {"$set": {f"bus.{k}": v for k, v in update_data.items()}}
+                {"id": bus_id},
+                {"$set": update_data}
             )
             return result.modified_count > 0
         except Exception as e:
@@ -101,7 +98,7 @@ class BusModel:
     def delete_bus(bus_id):
         """Delete a bus"""
         try:
-            result = BusModel.collection.delete_one({"bus.id": bus_id})
+            result = BusModel.collection.delete_one({"id": bus_id})
             return result.deleted_count > 0
         except Exception as e:
             raise Exception(f"Error deleting bus: {str(e)}")

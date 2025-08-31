@@ -17,28 +17,28 @@ def register():
         email = data.get("email")
         phone = data.get("phone")
         password = data.get("password")
-        role = data.get("role", "USER").upper()  # ✅ Allow USER or ADMIN
+        role = data.get("role", "USER").upper()
 
         # Validate inputs
         if not name or not email or not phone or not password:
             return jsonify({"error": "All fields are required"}), 400
 
-        # Check if email exists
+        # Check if email already exists
         if db.users.find_one({"email": email}):
             return jsonify({"error": "Email already exists"}), 400
 
-        # Create new user
+        # Create new user object
         new_user = {
             "name": name,
             "email": email,
             "phone": phone,
             "passwordHash": generate_password_hash(password),
-            "role": role if role in ["USER", "ADMIN"] else "USER",  # ✅ Force valid role
+            "role": role if role in ["USER", "ADMIN"] else "USER",
             "createdAt": datetime.utcnow(),
             "updatedAt": datetime.utcnow()
         }
 
-        # Insert user into DB
+        # Insert into DB
         result = db.users.insert_one(new_user)
         new_user["_id"] = str(result.inserted_id)
 
@@ -95,8 +95,8 @@ def login():
         return jsonify({"error": str(e)}), 500
 
 
-# ✅ Profile route
-@auth_bp.route("/profile", methods=["GET"])
+# ✅ Profile route — GET & UPDATE
+@auth_bp.route("/profile", methods=["GET", "PUT"])
 def profile():
     try:
         token = request.headers.get("Authorization")
@@ -107,11 +107,49 @@ def profile():
         if not decoded:
             return jsonify({"error": "Invalid or expired token"}), 401
 
-        user = db.users.find_one({"_id": ObjectId(decoded["user_id"])}, {"passwordHash": 0})
+        user_id = decoded["user_id"]
+        user = db.users.find_one({"_id": ObjectId(user_id)})
         if not user:
             return jsonify({"error": "User not found"}), 404
 
-        return jsonify({"user": serialize_doc(user)}), 200
+        # ✅ GET request → return user profile
+        if request.method == "GET":
+            user.pop("passwordHash", None)
+            return jsonify({"user": serialize_doc(user)}), 200
+
+        # ✅ PUT request → update user profile
+        elif request.method == "PUT":
+            data = request.get_json()
+            update_fields = {}
+
+            # Allow updating name, email, phone
+            if "name" in data:
+                update_fields["name"] = data["name"]
+            if "email" in data:
+                # Check if new email already exists for another user
+                existing_email = db.users.find_one({"email": data["email"], "_id": {"$ne": ObjectId(user_id)}})
+                if existing_email:
+                    return jsonify({"error": "Email already in use"}), 400
+                update_fields["email"] = data["email"]
+            if "phone" in data:
+                update_fields["phone"] = data["phone"]
+
+            # Update password if provided
+            if "password" in data and data["password"].strip():
+                update_fields["passwordHash"] = generate_password_hash(data["password"])
+
+            # Update timestamp
+            update_fields["updatedAt"] = datetime.utcnow()
+
+            # Apply updates
+            db.users.update_one({"_id": ObjectId(user_id)}, {"$set": update_fields})
+
+            # Return updated profile
+            updated_user = db.users.find_one({"_id": ObjectId(user_id)}, {"passwordHash": 0})
+            return jsonify({
+                "message": "Profile updated successfully",
+                "user": serialize_doc(updated_user)
+            }), 200
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500

@@ -65,7 +65,7 @@ export function Footer() {
               </div>
               <div className="flex items-center space-x-3 text-muted-foreground hover:text-primary transition-all duration-300 hover-3d-link transform-3d-full group">
                 <FaPhone className="w-5 h-5 hover-3d-icon group-hover:scale-110 transition-transform" />
-                <span className="font-medium">+91 1800-123-4567</span>
+                <span className="font-medium">+91 6202067088</span>
               </div>
             </div>
           </div>
@@ -169,7 +169,7 @@ export function Footer() {
         <div className="border-t border-border/50 mt-12 pt-8">
           <div className="flex flex-col md:flex-row justify-between items-center space-y-4 md:space-y-0">
             <p className="text-muted-foreground animate-text-3d-float text-center md:text-left">
-              © 2024 Where is My Bus. All rights reserved.
+              © 2025 Where is My Bus. All rights reserved.
             </p>
             <div className="flex flex-wrap justify-center md:justify-end space-x-6 text-muted-foreground">
               <Link href="/terms" className="hover:text-primary transition-all duration-300 link-premium hover-3d-link transform-3d-full font-medium">
