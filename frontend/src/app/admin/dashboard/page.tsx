@@ -21,6 +21,8 @@ import {
   FaLocationArrow
 } from "react-icons/fa";
 import { CSSShuttleBackground } from "@/components/shuttle-background";
+import { useRouter } from "next/navigation";
+import { FaShieldAlt } from "react-icons/fa";
 
 interface DashboardStats {
   totalUsers: number;
@@ -53,7 +55,55 @@ interface RecentActivity {
   status: "SUCCESS" | "PENDING" | "FAILED";
 }
 
+// --- Configuration & Types (For Auth) ---
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:5000";
+type AuthStatus = "loading" | "authenticated" | "forbidden" | "unauthenticated";
+
+// --- API Helper Function (For Auth) ---
+const apiFetch = async (endpoint: string, options: RequestInit = {}) => {
+    const token = localStorage.getItem("token");
+    const headers = {
+        'Content-Type': 'application/json',
+        'Authorization': token || '',
+        ...options.headers,
+    };
+    const response = await fetch(`${API_BASE_URL}${endpoint}`, { ...options, headers });
+    if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || `Request failed with status ${response.status}`);
+    }
+    return response.json();
+};
+
+
 export default function AdminDashboardPage() {
+   // --- ADD THESE LINES FOR AUTHENTICATION ---
+    const [authStatus, setAuthStatus] = useState<AuthStatus>("loading");
+    const router = useRouter();
+
+    useEffect(() => {
+        const verifyAdmin = async () => {
+            const token = localStorage.getItem("token");
+            if (!token) {
+                setAuthStatus("unauthenticated");
+                return;
+            }
+            try {
+                const data = await apiFetch(`/auth/profile`);
+                if (data.user && data.user.role === 'ADMIN') {
+                    setAuthStatus("authenticated");
+                } else {
+                    setAuthStatus("forbidden");
+                }
+            } catch (err) {
+                localStorage.removeItem("token");
+                setAuthStatus("unauthenticated");
+            }
+        };
+        verifyAdmin();
+    }, []);
+    // --- END OF AUTHENTICATION LOGIC ---
+    
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [liveBuses, setLiveBuses] = useState<LiveBus[]>([]);
   const [recentActivity, setRecentActivity] = useState<RecentActivity[]>([]);
@@ -62,100 +112,103 @@ export default function AdminDashboardPage() {
 
   // Mock data - replace with actual API calls
   useEffect(() => {
-    const mockStats: DashboardStats = {
-      totalUsers: 15420,
-      totalBuses: 850,
-      totalBookings: 45630,
-      totalRevenue: 2345000,
-      activeBuses: 720,
-      todayBookings: 1245,
-      todayRevenue: 84500
-    };
 
-    const mockLiveBuses: LiveBus[] = [
-      {
-        id: "1",
-        busNumber: "MH-01-AB-1234",
-        route: "Mumbai-Pune",
-        location: { lat: 19.0760, lng: 72.8777 },
-        speed: 45,
-        status: "ACTIVE",
-        lastUpdate: "2024-01-15T14:30:00"
-      },
-      {
-        id: "2",
-        busNumber: "DL-01-CD-5678",
-        route: "Delhi-Gurgaon",
-        location: { lat: 28.6139, lng: 77.2090 },
-        speed: 35,
-        status: "DELAYED",
-        lastUpdate: "2024-01-15T14:25:00"
-      },
-      {
-        id: "3",
-        busNumber: "KA-01-EF-9012",
-        route: "Bangalore-Mysore",
-        location: { lat: 12.9716, lng: 77.5946 },
-        speed: 50,
-        status: "ACTIVE",
-        lastUpdate: "2024-01-15T14:28:00"
-      },
-      {
-        id: "4",
-        busNumber: "TN-01-GH-3456",
-        route: "Chennai-Coimbatore",
-        location: { lat: 13.0827, lng: 80.2707 },
-        speed: 0,
-        status: "INACTIVE",
-        lastUpdate: "2024-01-15T14:15:00"
-      }
-    ];
+    if (authStatus === "authenticated") {
+      const mockStats: DashboardStats = {
+        totalUsers: 15420,
+        totalBuses: 850,
+        totalBookings: 45630,
+        totalRevenue: 2345000,
+        activeBuses: 720,
+        todayBookings: 1245,
+        todayRevenue: 84500
+      };
 
-    const mockRecentActivity: RecentActivity[] = [
-      {
-        id: "1",
-        type: "BOOKING",
-        description: "New booking for Mumbai-Pune route (BK001234)",
-        timestamp: "2024-01-15T14:28:00",
-        status: "SUCCESS"
-      },
-      {
-        id: "2",
-        type: "PAYMENT",
-        description: "Payment received for booking BK001233 - ₹560",
-        timestamp: "2024-01-15T14:25:00",
-        status: "SUCCESS"
-      },
-      {
-        id: "3",
-        type: "USER_REGISTRATION",
-        description: "New user registration: john.doe@email.com",
-        timestamp: "2024-01-15T14:20:00",
-        status: "SUCCESS"
-      },
-      {
-        id: "4",
-        type: "BUS_UPDATE",
-        description: "Bus MH-01-AB-1234 location updated",
-        timestamp: "2024-01-15T14:18:00",
-        status: "SUCCESS"
-      },
-      {
-        id: "5",
-        type: "PAYMENT",
-        description: "Payment failed for booking BK001232",
-        timestamp: "2024-01-15T14:15:00",
-        status: "FAILED"
-      }
-    ];
+      const mockLiveBuses: LiveBus[] = [
+        {
+          id: "1",
+          busNumber: "MH-01-AB-1234",
+          route: "Mumbai-Pune",
+          location: { lat: 19.0760, lng: 72.8777 },
+          speed: 45,
+          status: "ACTIVE",
+          lastUpdate: "2024-01-15T14:30:00"
+        },
+        {
+          id: "2",
+          busNumber: "DL-01-CD-5678",
+          route: "Delhi-Gurgaon",
+          location: { lat: 28.6139, lng: 77.2090 },
+          speed: 35,
+          status: "DELAYED",
+          lastUpdate: "2024-01-15T14:25:00"
+        },
+        {
+          id: "3",
+          busNumber: "KA-01-EF-9012",
+          route: "Bangalore-Mysore",
+          location: { lat: 12.9716, lng: 77.5946 },
+          speed: 50,
+          status: "ACTIVE",
+          lastUpdate: "2024-01-15T14:28:00"
+        },
+        {
+          id: "4",
+          busNumber: "TN-01-GH-3456",
+          route: "Chennai-Coimbatore",
+          location: { lat: 13.0827, lng: 80.2707 },
+          speed: 0,
+          status: "INACTIVE",
+          lastUpdate: "2024-01-15T14:15:00"
+        }
+      ];
 
-    setTimeout(() => {
-      setStats(mockStats);
-      setLiveBuses(mockLiveBuses);
-      setRecentActivity(mockRecentActivity);
-      setLoading(false);
-    }, 1500);
-  }, []);
+      const mockRecentActivity: RecentActivity[] = [
+        {
+          id: "1",
+          type: "BOOKING",
+          description: "New booking for Mumbai-Pune route (BK001234)",
+          timestamp: "2024-01-15T14:28:00",
+          status: "SUCCESS"
+        },
+        {
+          id: "2",
+          type: "PAYMENT",
+          description: "Payment received for booking BK001233 - ₹560",
+          timestamp: "2024-01-15T14:25:00",
+          status: "SUCCESS"
+        },
+        {
+          id: "3",
+          type: "USER_REGISTRATION",
+          description: "New user registration: john.doe@email.com",
+          timestamp: "2024-01-15T14:20:00",
+          status: "SUCCESS"
+        },
+        {
+          id: "4",
+          type: "BUS_UPDATE",
+          description: "Bus MH-01-AB-1234 location updated",
+          timestamp: "2024-01-15T14:18:00",
+          status: "SUCCESS"
+        },
+        {
+          id: "5",
+          type: "PAYMENT",
+          description: "Payment failed for booking BK001232",
+          timestamp: "2024-01-15T14:15:00",
+          status: "FAILED"
+        }
+      ];
+      
+      setTimeout(() => {
+        setStats(mockStats);
+        setLiveBuses(mockLiveBuses);
+        setRecentActivity(mockRecentActivity);
+        setLoading(false);
+      }, 1500);
+    }
+  }, [authStatus]); // <-- Important: Change the dependency array
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -206,6 +259,42 @@ export default function AdminDashboardPage() {
         return <FaClock className="text-gray-500" />;
     }
   };
+
+  // --- ADD THESE BLOCKS FOR AUTHENTICATION ---
+    if (authStatus === "loading") {
+        return <div className="flex items-center justify-center min-h-screen"><div className="animate-spin rounded-full h-32 w-32 border-b-2 border-primary"></div></div>;
+    }
+
+    if (authStatus === "unauthenticated") {
+        return (
+            <div className="flex items-center justify-center min-h-screen">
+                <Card className="w-96 text-center">
+                    <CardContent className="pt-6">
+                        <FaUsers className="w-16 h-16 mx-auto text-muted-foreground mb-4" />
+                        <h3 className="text-lg font-semibold mb-2">Authentication Required</h3>
+                        <p className="text-muted-foreground mb-4">Please sign in as an admin to continue.</p>
+                        <Button onClick={() => router.push("/login")}>Sign In</Button>
+                    </CardContent>
+                </Card>
+            </div>
+        ); 
+    }
+
+    if (authStatus === "forbidden") {
+        return (
+            <div className="flex items-center justify-center min-h-screen">
+                <Card className="w-96 text-center">
+                    <CardContent className="pt-6">
+                        <FaShieldAlt className="w-16 h-16 mx-auto text-red-500 mb-4" />
+                        <h3 className="text-lg font-semibold mb-2">Access Denied</h3>
+                        <p className="text-muted-foreground mb-4">You do not have permission to view this page.</p>
+                        <Button onClick={() => router.push("/")} variant="outline">Go to Homepage</Button>
+                    </CardContent>
+                </Card>
+            </div>
+        );
+    }
+    // --- END OF AUTHENTICATION BLOCKS ---
 
   if (loading) {
     return (
