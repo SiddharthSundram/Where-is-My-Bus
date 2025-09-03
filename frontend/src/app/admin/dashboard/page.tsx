@@ -18,7 +18,8 @@ import {
   FaRoute,
   FaCalendar,
   FaClock,
-  FaLocationArrow
+  FaLocationArrow,
+  FaCalendarAlt
 } from "react-icons/fa";
 import { CSSShuttleBackground } from "@/components/shuttle-background";
 import { useRouter } from "next/navigation";
@@ -474,18 +475,18 @@ export default function AdminDashboardPage() {
 
             <Card className="cursor-pointer hover:shadow-md transition-shadow">
               <CardHeader className="text-center">
-                <FaRoute className="h-8 w-8 mx-auto mb-2 text-purple-500" />
-                <CardTitle className="text-lg">Manage Routes</CardTitle>
+                  <FaCalendarAlt className="h-8 w-8 mx-auto mb-2 text-purple-500" />
+                  <CardTitle className="text-lg">Manage Schedules</CardTitle>
               </CardHeader>
               <CardContent className="text-center">
-                <p className="text-sm text-muted-foreground mb-4">
-                  Configure routes and stops
-                </p>
-                <Button className="w-full" asChild>
-                  <a href="/admin/manage/routes">View Routes</a>
-                </Button>
+                  <p className="text-sm text-muted-foreground mb-4">
+                      Configure bus timings and active days
+                  </p>
+                  <Button className="w-full" asChild>
+                      <a href="/admin/manage/schedules">View Schedules</a>
+                  </Button>
               </CardContent>
-            </Card>
+          </Card>
 
             <Card className="cursor-pointer hover:shadow-md transition-shadow">
               <CardHeader className="text-center">

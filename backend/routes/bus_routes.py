@@ -1,12 +1,13 @@
 from flask import Blueprint, request, jsonify
 from models.bus_model import BusModel
+from models.schedule_model import ScheduleModel
 from utils.jwt_utils import verify_token
 from utils.json_encoder import serialize_doc
 from functools import wraps
 
 bus_bp = Blueprint("buses", __name__)
 
-# ✅ Middleware to verify JWT & role-based access
+# Middleware to verify JWT & role-based access
 def auth_required(admin_only=False):
     def decorator(f):
         @wraps(f)
@@ -31,7 +32,7 @@ def auth_required(admin_only=False):
     return decorator
 
 
-# ✅ Add a new bus with route + stops — ADMIN ONLY
+# Add a new bus with route + stops — ADMIN ONLY
 @bus_bp.route("/", methods=["POST"])
 @auth_required(admin_only=True)
 def create_bus():
@@ -68,12 +69,12 @@ def create_bus():
         return jsonify({"error": str(e)}), 500
 
 
-# ✅ Get all buses (with query param modes)
+# Get all buses (with query param modes)
 @bus_bp.route("/", methods=["GET"])
 @auth_required()
 def get_buses():
     try:
-        mode = request.args.get("mode")          # all | cities | stops | search
+        mode = request.args.get("mode")      # all | cities | stops | search
         source = request.args.get("source")
         destination = request.args.get("destination")
 
@@ -86,7 +87,7 @@ def get_buses():
 
         # Unique cities
         if mode == "cities":
-            cities = list({bus["route"]["city"] for bus in buses if "route" in bus})
+            cities = list({bus["route"]["city"] for bus in buses if "route" in bus and bus["route"]})
             return jsonify({"cities": cities}), 200
 
         # Unique stops
@@ -114,7 +115,7 @@ def get_buses():
         return jsonify({"error": str(e)}), 500
 
 
-# ✅ Get single bus
+# Get single bus
 @bus_bp.route("/<bus_id>", methods=["GET"])
 @auth_required()
 def get_bus(bus_id):
@@ -127,7 +128,7 @@ def get_bus(bus_id):
         return jsonify({"error": str(e)}), 500
 
 
-# ✅ Update bus — ADMIN ONLY
+# Update bus — ADMIN ONLY
 @bus_bp.route("/<bus_id>", methods=["PUT"])
 @auth_required(admin_only=True)
 def update_bus(bus_id):
@@ -141,14 +142,21 @@ def update_bus(bus_id):
         return jsonify({"error": str(e)}), 500
 
 
-# ✅ Delete bus — ADMIN ONLY
+# Delete bus — ADMIN ONLY
 @bus_bp.route("/<bus_id>", methods=["DELETE"])
 @auth_required(admin_only=True)
 def delete_bus(bus_id):
     try:
+        # CALL THE DELETE METHOD FOR SCHEDULES BEFORE DELETING THE BUS
+        ScheduleModel.delete_by_bus_id(bus_id)
+        
+        # Now, delete the bus itself
         deleted = BusModel.delete_bus(bus_id)
+        
         if not deleted:
             return jsonify({"error": "Bus not found"}), 404
-        return jsonify({"message": "Bus deleted successfully ✅"}), 200
+            
+        return jsonify({"message": "Bus and all related schedules deleted successfully"}), 200
+        
     except Exception as e:
         return jsonify({"error": str(e)}), 500
