@@ -6,6 +6,7 @@ from functools import wraps
 
 schedule_bp = Blueprint("schedules", __name__)
 
+# Middleware to verify JWT & role-based access (as provided in your file)
 def auth_required(admin_only=False):
     def decorator(f):
         @wraps(f)
@@ -33,19 +34,20 @@ def auth_required(admin_only=False):
 @schedule_bp.route("/", methods=["POST"])
 @auth_required(admin_only=True)
 def create_schedule():
-    """Creates a new schedule for a bus."""
+    """Creates a new schedule for a bus with detailed stop timings."""
     try:
         data = request.get_json()
-        required = ["busId", "departureTime", "arrivalTime", "daysActive"]
+        # ✅ UPDATED: Changed required fields to match the new model
+        required = ["busId", "daysActive", "stop_timings"]
         missing = [key for key in required if key not in data]
         if missing:
             return jsonify({"error": f"Missing fields: {', '.join(missing)}"}), 400
 
+        # ✅ UPDATED: Call the model with the new arguments
         new_schedule = ScheduleModel.create_schedule(
             bus_id=data["busId"],
-            departure_time=data["departureTime"],
-            arrival_time=data["arrivalTime"],
             days_active=data["daysActive"],
+            stop_timings=data["stop_timings"],
             frequency_min=data.get("frequencyMin")
         )
         return jsonify({
@@ -68,7 +70,6 @@ def get_schedules():
         else:
             schedules = ScheduleModel.get_all_schedules()
         
-        # Manually serialize each document in the list
         schedules = [serialize_doc(s) for s in schedules]
         return jsonify(schedules), 200
     except Exception as e:
@@ -101,7 +102,6 @@ def update_schedule(schedule_id):
         if not updated:
             return jsonify({"error": "Schedule not found or no changes made"}), 404
         
-        # Fetch and return the updated document
         updated_schedule = ScheduleModel.get_schedule_by_id(schedule_id)
         return jsonify({
             "message": "Schedule updated successfully ✅",

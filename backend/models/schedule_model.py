@@ -5,20 +5,24 @@ from bson.errors import InvalidId
 
 class ScheduleModel:
     """
-    Handles all database operations for the schedules collection,
-    matching the patterns used in BusModel.
+    Handles all database operations for the schedules collection.
+    Schedules now contain detailed timings for each stop.
     """
     collection = db.schedules
 
     @staticmethod
-    def create_schedule(bus_id, departure_time, arrival_time, days_active, frequency_min=None):
-        """Creates a new schedule and returns the document with a string _id."""
+    def create_schedule(bus_id, days_active, stop_timings, frequency_min=None):
+        """
+        Creates a new schedule with detailed timings for each stop.
+        'stop_timings' should be a list of dictionaries.
+        e.g., [{"stop_id": "s1", "stop_name": "A", "arrivalTime": "09:00", "departureTime": "09:02"}, ...]
+        """
         try:
+            # The data structure is updated to store timings per stop
             schedule_data = {
                 "busId": ObjectId(bus_id),
-                "departureTime": departure_time,
-                "arrivalTime": arrival_time,
                 "daysActive": days_active,
+                "stop_timings": stop_timings, # <-- REPLACED old time fields
                 "frequencyMin": frequency_min,
                 "createdAt": datetime.utcnow(),
                 "updatedAt": datetime.utcnow()
@@ -28,7 +32,6 @@ class ScheduleModel:
             # Fetch the new document to return it
             new_schedule = ScheduleModel.collection.find_one({"_id": result.inserted_id})
             if new_schedule:
-                # Manually serialize _id to a string, just like in BusModel
                 new_schedule["_id"] = str(new_schedule["_id"])
             return new_schedule
 
@@ -108,4 +111,3 @@ class ScheduleModel:
             return 0
         except Exception as e:
             raise Exception(f"Error deleting schedules by bus ID: {str(e)}")
-
